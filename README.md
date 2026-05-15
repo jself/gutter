@@ -1,5 +1,9 @@
 # gutter
 
+> **Note:** this was vibe-coded end-to-end with an AI agent (Claude). I'm
+> publishing it because it's useful, not because I wrote it. Use at your own
+> risk and feel free to fork/rewrite — I'm not claiming authorship of the code.
+
 A local diff-review tool for collaborating with AI coding agents.
 
 When an agent finishes a change, run `gutter` in your repo. It opens a browser

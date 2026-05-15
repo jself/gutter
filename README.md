@@ -138,7 +138,7 @@ If `code` or `cursor` is on your PATH, gutter picks one automatically.
 
 `review.md` is plain markdown structured for easy parsing:
 
-```markdown
+````markdown
 # Review of `@` (jj)
 
 ## General feedback
@@ -164,7 +164,7 @@ This should return an actual error if the dial fails — don't swallow it.
 ```
 
 Rename to `client` — `foo` is a placeholder name.
-```
+````
 
 When you re-run gutter on the same revset, it parses this file back and
 reattaches each comment to its line. Comments whose lines no longer exist

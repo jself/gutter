@@ -11,6 +11,15 @@ the agent has and hasn't addressed.
 
 Works with both [jj](https://github.com/jj-vcs/jj) and git.
 
+![dark mode](docs/screenshot-dark.png)
+
+<details>
+<summary>Light mode</summary>
+
+![light mode](docs/screenshot-light.png)
+
+</details>
+
 ## Features
 
 - Side-by-side line numbers, syntax highlighting, intra-line word diff
@@ -68,8 +77,44 @@ that have been addressed, add new ones, and save again.
 | `-o <path>` | `review.md` | Output file for the markdown review. |
 | `-port <n>` | random | HTTP port to listen on. |
 | `-open=false` | `true` | Don't auto-launch the browser. |
+| `-dir <path>` | `.` | Directory for the output file. Combine with `-o` to put reviews in e.g. `.claude/`. |
 | `-collapse <n>` | `80` | Auto-collapse files with more than N changed lines. `0` disables. |
-| `-editor "<tmpl>"` | auto-detected | Editor command template — see below. Also reads `$GUTTER_EDITOR`. |
+| `-editor "<tmpl>"` | auto-detected | Editor command template — see below. |
+
+## Configuration
+
+Every flag has an environment variable and a config-file equivalent. Precedence
+(highest wins): CLI flags → env vars → project config (`./.gutter.json`) → user
+config (`$XDG_CONFIG_HOME/gutter/config.json`, falling back to
+`~/.config/gutter/config.json`) → built-in defaults.
+
+### Environment variables
+
+| Variable | Maps to |
+|---|---|
+| `GUTTER_REV` | `-r` |
+| `GUTTER_OUTPUT` | `-o` |
+| `GUTTER_DIR` | `-dir` |
+| `GUTTER_PORT` | `-port` |
+| `GUTTER_OPEN` | `-open` (`true` / `false`) |
+| `GUTTER_EDITOR` | `-editor` |
+| `GUTTER_COLLAPSE` | `-collapse` |
+
+### Config file
+
+```jsonc
+// ~/.config/gutter/config.json   (or ./.gutter.json for a per-project override)
+{
+  "dir": ".claude",
+  "output": "review.md",
+  "editor": "nvim --server /tmp/nvim.sock --remote-send ':e {file}<CR>:{line}<CR>'",
+  "collapse": 120,
+  "open": true
+}
+```
+
+The example above writes reviews to `.claude/review.md`, opens links in a
+running nvim, and collapses files over 120 changed lines.
 
 ## Editor templates
 

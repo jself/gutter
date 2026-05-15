@@ -21,6 +21,96 @@ import (
 //go:embed index.html
 var assets embed.FS
 
+type Config struct {
+	Rev      string `json:"rev,omitempty"`
+	Output   string `json:"output,omitempty"`
+	Dir      string `json:"dir,omitempty"`
+	Port     int    `json:"port,omitempty"`
+	Open     bool   `json:"open,omitempty"`
+	Editor   string `json:"editor,omitempty"`
+	Collapse int    `json:"collapse,omitempty"`
+}
+
+func defaultConfig() Config {
+	return Config{Output: "review.md", Open: true, Collapse: 80}
+}
+
+func loadConfig() Config {
+	c := defaultConfig()
+	// User config: $XDG_CONFIG_HOME/gutter/config.json or ~/.config/gutter/config.json
+	xdg := os.Getenv("XDG_CONFIG_HOME")
+	if xdg == "" {
+		if h, err := os.UserHomeDir(); err == nil {
+			xdg = filepath.Join(h, ".config")
+		}
+	}
+	if xdg != "" {
+		mergeConfigFile(&c, filepath.Join(xdg, "gutter", "config.json"))
+	}
+	// Project config: ./.gutter.json
+	mergeConfigFile(&c, ".gutter.json")
+	// Env overrides
+	if v := os.Getenv("GUTTER_REV"); v != "" {
+		c.Rev = v
+	}
+	if v := os.Getenv("GUTTER_OUTPUT"); v != "" {
+		c.Output = v
+	}
+	if v := os.Getenv("GUTTER_DIR"); v != "" {
+		c.Dir = v
+	}
+	if v := os.Getenv("GUTTER_PORT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.Port = n
+		}
+	}
+	if v := os.Getenv("GUTTER_OPEN"); v != "" {
+		c.Open = v != "0" && v != "false" && v != "no"
+	}
+	if v := os.Getenv("GUTTER_EDITOR"); v != "" {
+		c.Editor = v
+	}
+	if v := os.Getenv("GUTTER_COLLAPSE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.Collapse = n
+		}
+	}
+	return c
+}
+
+func mergeConfigFile(c *Config, path string) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var f Config
+	// Default Open to current value so a missing key doesn't flip it to false.
+	f.Open = c.Open
+	if err := json.Unmarshal(b, &f); err != nil {
+		fmt.Fprintf(os.Stderr, "gutter: ignoring invalid config %s: %v\n", path, err)
+		return
+	}
+	if f.Rev != "" {
+		c.Rev = f.Rev
+	}
+	if f.Output != "" {
+		c.Output = f.Output
+	}
+	if f.Dir != "" {
+		c.Dir = f.Dir
+	}
+	if f.Port != 0 {
+		c.Port = f.Port
+	}
+	c.Open = f.Open
+	if f.Editor != "" {
+		c.Editor = f.Editor
+	}
+	if f.Collapse != 0 {
+		c.Collapse = f.Collapse
+	}
+}
+
 type File struct {
 	Path     string `json:"path"`
 	Lang     string `json:"lang"`
@@ -98,13 +188,16 @@ type SaveRequest struct {
 }
 
 func main() {
+	cfg := loadConfig()
+
 	var (
-		rev       = flag.String("r", "", "revset (jj) or rev (git); default: jj @ (current change) or git @{u} (vs upstream)")
-		output    = flag.String("o", "review.md", "output review file")
-		port      = flag.Int("port", 0, "HTTP port (0 = random)")
-		open      = flag.Bool("open", true, "open browser")
-		editorCmd = flag.String("editor", os.Getenv("GUTTER_EDITOR"), "editor command template; {file} and {line} are substituted (e.g. \"code -g {file}:{line}\")")
-		collapse  = flag.Int("collapse", 80, "auto-collapse files with more than N changed lines (0 disables)")
+		rev       = flag.String("r", cfg.Rev, "revset (jj) or rev (git); default: jj @ (current change) or git @{u} (vs upstream)")
+		output    = flag.String("o", cfg.Output, "output review filename")
+		outDir    = flag.String("dir", cfg.Dir, "directory for the output file (e.g. \".claude\")")
+		port      = flag.Int("port", cfg.Port, "HTTP port (0 = random)")
+		open      = flag.Bool("open", cfg.Open, "open browser")
+		editorCmd = flag.String("editor", cfg.Editor, "editor command template; {file} and {line} are substituted (e.g. \"code -g {file}:{line}\")")
+		collapse  = flag.Int("collapse", cfg.Collapse, "auto-collapse files with more than N changed lines (0 disables)")
 	)
 	flag.Parse()
 
@@ -129,44 +222,57 @@ func main() {
 		}
 	}
 
-	diff, err := getDiff(vcs, *rev)
-	if err != nil {
-		die("getting diff: %v", err)
+	outPath := *output
+	if !filepath.IsAbs(outPath) && *outDir != "" {
+		outPath = filepath.Join(*outDir, outPath)
 	}
-
-	files, err := parseDiff(diff)
-	if err != nil {
-		die("parsing diff: %v", err)
-	}
-	for fi := range files {
-		for hi := range files[fi].Hunks {
-			annotateIntraLine(&files[fi].Hunks[hi])
-			for _, l := range files[fi].Hunks[hi].Lines {
-				switch l.Kind {
-				case "add":
-					files[fi].AddCount++
-				case "del":
-					files[fi].DelCount++
-				}
-			}
-		}
-	}
-
-	if len(files) == 0 {
-		fmt.Fprintln(os.Stderr, "No changes found for", *rev)
-		os.Exit(0)
-	}
-
-	outAbs, err := filepath.Abs(*output)
+	outAbs, err := filepath.Abs(outPath)
 	if err != nil {
 		die("%v", err)
 	}
-
-	priorComments, priorGen := loadPrior(outAbs)
-	data := DiffData{Rev: *rev, VCS: vcs, Files: files, Prior: priorComments, PriorGen: priorGen}
-	if len(priorComments) > 0 || priorGen != "" {
-		fmt.Fprintf(os.Stderr, "loaded %d prior comment(s) from %s\n", len(priorComments), outAbs)
+	if d := filepath.Dir(outAbs); d != "" {
+		_ = os.MkdirAll(d, 0755)
 	}
+
+	computeData := func() (DiffData, error) {
+		diff, err := getDiff(vcs, *rev)
+		if err != nil {
+			return DiffData{}, fmt.Errorf("getting diff: %w", err)
+		}
+		files, err := parseDiff(diff)
+		if err != nil {
+			return DiffData{}, fmt.Errorf("parsing diff: %w", err)
+		}
+		for fi := range files {
+			for hi := range files[fi].Hunks {
+				annotateIntraLine(&files[fi].Hunks[hi])
+				for _, l := range files[fi].Hunks[hi].Lines {
+					switch l.Kind {
+					case "add":
+						files[fi].AddCount++
+					case "del":
+						files[fi].DelCount++
+					}
+				}
+			}
+		}
+		priorComments, priorGen := loadPrior(outAbs)
+		return DiffData{Rev: *rev, VCS: vcs, Files: files, Prior: priorComments, PriorGen: priorGen}, nil
+	}
+
+	// Initial compute to surface "no changes" / load errors at startup.
+	data, err := computeData()
+	if err != nil {
+		die("%v", err)
+	}
+	if len(data.Files) == 0 {
+		fmt.Fprintln(os.Stderr, "No changes found for", *rev)
+		os.Exit(0)
+	}
+	if len(data.Prior) > 0 || data.PriorGen != "" {
+		fmt.Fprintf(os.Stderr, "loaded %d prior comment(s) from %s\n", len(data.Prior), outAbs)
+	}
+	_ = data
 
 	mux := http.NewServeMux()
 
@@ -221,8 +327,13 @@ func main() {
 	})
 
 	mux.HandleFunc("/diff", func(w http.ResponseWriter, r *http.Request) {
+		d, err := computeData()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(data)
+		json.NewEncoder(w).Encode(d)
 	})
 
 	doneCh := make(chan struct{}, 1)

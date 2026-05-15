@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gutter</title>
+<link rel="stylesheet" id="hljs-theme" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+  :root, html[data-theme="dark"] {
+    --bg: #07090d;
+    --panel: #14191f;
+    --border: #3a424d;
+    --text: #f0f6fc;
+    --muted: #a8b1bb;
+    --add-bg: #103a1f;
+    --add-fg: #5eea73;
+    --del-bg: #581616;
+    --del-fg: #ff6b61;
+    --accent: #79b8ff;
+    --selected: #1f3a5f;
+    --ins-overlay: rgba(86, 211, 100, 0.45);
+    --del-overlay: rgba(248, 81, 73, 0.45);
+    --panel-strong: #1c2128;
+    --panel-deep: #0b1018;
+  }
+  html[data-theme="light"] {
+    --bg: #ffffff;
+    --panel: #f6f8fa;
+    --border: #d0d7de;
+    --text: #1f2328;
+    --muted: #57606a;
+    --add-bg: #dafbe1;
+    --add-fg: #1a7f37;
+    --del-bg: #ffebe9;
+    --del-fg: #cf222e;
+    --accent: #0969da;
+    --selected: #ddf4ff;
+    --ins-overlay: rgba(26, 127, 55, 0.25);
+    --del-overlay: rgba(207, 34, 46, 0.25);
+    --panel-strong: #eaeef2;
+    --panel-deep: #f6f8fa;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  header { position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--border); padding: 8px 14px; z-index: 10; display: flex; gap: 14px; align-items: center; }
+  header .rev { color: var(--accent); font-weight: 600; }
+  header .out { color: var(--muted); }
+  header .spacer { flex: 1; }
+  header button { background: var(--accent); color: #fff; border: 0; padding: 6px 14px; border-radius: 4px; cursor: pointer; font: inherit; font-weight: 600; }
+  header button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  header button:hover { filter: brightness(1.1); }
+  .layout { display: flex; align-items: flex-start; }
+  .layout.sidebar-hidden aside.sidebar { display: none; }
+  aside.sidebar { position: sticky; top: 41px; width: 280px; flex-shrink: 0; max-height: calc(100vh - 41px); overflow: auto; padding: 14px 8px 14px 14px; border-right: 1px solid var(--border); }
+  header .viewing { color: var(--muted); }
+  header .viewing #viewing { color: var(--text); font-weight: 600; }
+  aside.sidebar h4 { margin: 0 0 8px 0; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  aside.sidebar input.filter { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px; font: inherit; margin-bottom: 8px; }
+  .file-list { list-style: none; margin: 0; padding: 0; }
+  .file-list li { padding: 4px 6px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .file-list li:hover { background: var(--selected); }
+  .file-list li.active { background: var(--selected); }
+  .file-list li.hidden { display: none; }
+  .file-list .path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .file-list .path .dir { color: var(--muted); }
+  .file-list .counts { font-size: 11px; white-space: nowrap; }
+  .file-list .counts .add { color: var(--add-fg); }
+  .file-list .counts .del { color: var(--del-fg); }
+  .file-list .clear { margin-top: 8px; color: var(--accent); cursor: pointer; font-size: 11px; }
+  main { flex: 1; max-width: 1100px; margin: 0 auto; padding: 14px; min-width: 0; }
+  .file.collapsed table.diff, .file.collapsed .hunk-header { display: none; }
+  .file .collapse-toggle { padding: 8px 12px; color: var(--accent); cursor: pointer; border-top: 1px solid var(--border); font-size: 12px; user-select: none; }
+  .file .collapse-toggle:hover { background: var(--panel-strong); }
+  .file .file-meta { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: 8px; }
+  .file .file-meta .add { color: var(--add-fg); }
+  .file .file-meta .del { color: var(--del-fg); }
+  .file h3 .open-btn { float: right; background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; border-radius: 3px; cursor: pointer; font: inherit; font-size: 11px; }
+  .file h3 .open-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .saved-comment .controls .open-btn { color: var(--accent); border-color: rgba(88, 166, 255, 0.4); }
+  .file { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 18px; overflow: hidden; }
+  .file h3 { margin: 0; padding: 8px 12px; background: var(--panel-strong); border-bottom: 1px solid var(--border); font-size: 13px; color: var(--accent); }
+  .hunk-header { padding: 4px 12px; color: var(--muted); background: var(--panel-deep); border-bottom: 1px solid var(--border); font-size: 12px; }
+  table.diff { width: 100%; border-collapse: collapse; font-family: inherit; }
+  table.diff td { padding: 0 8px; vertical-align: top; white-space: pre; line-height: 1.5; }
+  td.ln { color: var(--muted); text-align: right; user-select: none; width: 48px; cursor: pointer; border-right: 1px solid var(--border); }
+  td.ln:hover { background: var(--selected); color: var(--accent); }
+  tr.add td { background: var(--add-bg); }
+  tr.del td { background: var(--del-bg); }
+  td.text .prefix { user-select: none; padding-right: 4px; display: inline-block; }
+  tr.add td.text .prefix { color: var(--add-fg); }
+  tr.del td.text .prefix { color: var(--del-fg); }
+  /* Intra-line diff overlay: invisible text in .bg-layer, syntax-highlighted code on top */
+  td.text .content { position: relative; display: inline-block; vertical-align: top; }
+  td.text .bg-layer { position: absolute; left: 0; top: 0; white-space: pre; color: transparent; user-select: none; pointer-events: none; font: inherit; }
+  td.text .bg-layer .ins { background: var(--ins-overlay); border-radius: 2px; }
+  td.text .bg-layer .del { background: var(--del-overlay); border-radius: 2px; }
+  td.text .fg-layer { position: relative; z-index: 1; }
+  tr.selected td { background: var(--selected) !important; }
+  tr.comment-row td { background: var(--panel-deep); padding: 10px 12px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); white-space: normal; }
+  .comment-form textarea { width: 100%; min-height: 70px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; font: inherit; resize: vertical; }
+  .comment-form .actions { margin-top: 6px; display: flex; gap: 8px; }
+  .comment-form button { background: var(--accent); color: #fff; border: 0; padding: 4px 10px; border-radius: 4px; cursor: pointer; font: inherit; }
+  .comment-form button.cancel { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .saved-comment { color: var(--text); }
+  .saved-comment .body { white-space: pre-wrap; }
+  .saved-comment .loc { color: var(--muted); margin-bottom: 4px; }
+  .saved-comment .controls { margin-top: 6px; }
+  .saved-comment .controls button { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; border-radius: 3px; cursor: pointer; font: inherit; font-size: 11px; margin-right: 4px; }
+  .general { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 18px; }
+  .general label { display: block; color: var(--muted); margin-bottom: 6px; }
+  .general textarea { width: 100%; min-height: 80px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; font: inherit; resize: vertical; }
+  .status { color: var(--muted); font-size: 12px; }
+  .status.ok { color: var(--add-fg); }
+  .status.err { color: var(--del-fg); }
+  .hint { color: var(--muted); font-size: 12px; padding: 6px 12px; }
+  /* Highlight.js overrides: keep diff backgrounds visible */
+  td.text code.hljs { background: transparent !important; padding: 0; font: inherit; }
+  td.text code { background: transparent; padding: 0; }
+  /* Prior-comment marker */
+  .saved-comment.prior { border-left: 3px solid #d29922; padding-left: 8px; margin-left: -8px; }
+  .saved-comment.prior .loc::after { content: " · prior"; color: #d29922; font-size: 11px; }
+  /* Comment indicator on line number */
+  td.ln.has-comment { background: #1f2a44; color: var(--accent); position: relative; }
+  td.ln.has-comment::after { content: "💬"; font-size: 9px; position: absolute; right: 1px; top: 0; }
+  /* Modal */
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .modal-backdrop.show { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 18px; width: min(640px, 90vw); }
+  .modal h4 { margin: 0 0 4px 0; color: var(--accent); font-size: 13px; }
+  .modal .loc { color: var(--muted); margin-bottom: 10px; font-size: 12px; }
+  .modal textarea { width: 100%; min-height: 140px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; font: inherit; resize: vertical; }
+  .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  .modal button { background: var(--accent); color: #fff; border: 0; padding: 6px 14px; border-radius: 4px; cursor: pointer; font: inherit; font-weight: 600; }
+  .modal button.cancel { background: transparent; border: 1px solid var(--border); color: var(--text); font-weight: 400; }
+</style>
+</head>
+<body>
+<header>
+  <button class="secondary" id="sidebarToggle" title="Toggle file list" style="padding: 4px 10px;">☰</button>
+  <div>rev <span class="rev">{{.Rev}}</span> ({{.VCS}})</div>
+  <div class="viewing">Viewing: <span id="viewing">All files</span></div>
+  <div class="out">→ {{.Out}}</div>
+  <div class="spacer"></div>
+  <span id="status" class="status"></span>
+  <button class="secondary" id="themeToggle" title="Toggle light/dark" style="padding: 4px 10px;">🌙</button>
+  <button class="secondary" id="copyBtn" title="Copy review markdown to clipboard">Copy</button>
+  <button class="secondary" onclick="quit()">Quit</button>
+  <button onclick="save()">Save review</button>
+</header>
+<div class="layout">
+<aside class="sidebar">
+  <h4>Files</h4>
+  <input type="text" class="filter" id="fileFilter" placeholder="filter files…">
+  <ul class="file-list" id="fileList"></ul>
+  <div class="clear" id="clearFilter" style="display:none">↻ show all files</div>
+</aside>
+<main>
+  <div class="general">
+    <label>General feedback (optional)</label>
+    <textarea id="general" placeholder="Notes for the agent..."></textarea>
+  </div>
+  <div class="hint">Click a line number to add an inline comment. Click and drag (or shift-click) to comment on a range.</div>
+  <div id="files"></div>
+</main>
+</div>
+
+<div class="modal-backdrop" id="editModal">
+  <div class="modal">
+    <h4 id="editTitle">Edit comment</h4>
+    <div class="loc" id="editLoc"></div>
+    <textarea id="editBody"></textarea>
+    <div class="actions">
+      <button class="cancel" type="button" id="editCancel">Cancel</button>
+      <button type="button" id="editSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let DATA = null;
+let COMMENTS = []; // {id, path, side, line, end_line, snippet, body}
+let nextId = 1;
+let dragStart = null; // {fileIdx, hunkIdx, lineIdx}
+const HAS_EDITOR = {{if .HasEditor}}true{{else}}false{{end}};
+const COLLAPSE_THRESHOLD = {{.Collapse}}; // total +/- lines, 0 = never
+let activeFileFilter = null; // path or null
+let textFilter = '';
+
+async function load() {
+  const r = await fetch('/diff');
+  DATA = await r.json();
+  // Seed COMMENTS from prior review.md
+  if (DATA.prior && DATA.prior.length) {
+    for (const c of DATA.prior) {
+      COMMENTS.push({
+        id: nextId++,
+        path: c.path,
+        side: c.side || 'new',
+        line: c.line,
+        end_line: c.end_line || c.line,
+        snippet: c.snippet || '',
+        body: c.body,
+        prior: true,
+      });
+    }
+  }
+  if (DATA.prior_general) {
+    document.getElementById('general').value = DATA.prior_general;
+  }
+  render();
+}
+
+function render() {
+  renderSidebar();
+  updateViewing();
+  const container = document.getElementById('files');
+  container.innerHTML = '';
+  DATA.files.forEach((f, fi) => {
+    if (activeFileFilter && f.path !== activeFileFilter) return;
+    const fileDiv = document.createElement('div');
+    fileDiv.className = 'file';
+    fileDiv.dataset.path = f.path;
+    const changed = f.add_count + f.del_count;
+    const large = COLLAPSE_THRESHOLD > 0 && changed > COLLAPSE_THRESHOLD;
+    const meta = `<span class="file-meta"><span class="add">+${f.add_count}</span> <span class="del">−${f.del_count}</span></span>`;
+    const openBtn = HAS_EDITOR ? `<button class="open-btn" type="button" data-open-file="${escapeHtml(f.path)}">open in editor</button>` : '';
+    fileDiv.innerHTML = `<h3>${openBtn}${escapeHtml(f.path)}${meta}</h3>`;
+    if (large && activeFileFilter !== f.path) {
+      fileDiv.classList.add('collapsed');
+    }
+    f.hunks.forEach((h, hi) => {
+      const hdr = document.createElement('div');
+      hdr.className = 'hunk-header';
+      hdr.textContent = h.header;
+      fileDiv.appendChild(hdr);
+      const tbl = document.createElement('table');
+      tbl.className = 'diff';
+      h.lines.forEach((l, li) => {
+        const tr = document.createElement('tr');
+        tr.className = l.kind;
+        tr.dataset.fi = fi; tr.dataset.hi = hi; tr.dataset.li = li;
+        const oldL = l.old_line || '';
+        const newL = l.new_line || '';
+        const lineNum = l.kind === 'del' ? oldL : newL;
+        const side = l.kind === 'del' ? 'old' : 'new';
+        const langClass = f.lang ? ` class="language-${f.lang}"` : '';
+        const prefix = l.kind === 'add' ? '+' : l.kind === 'del' ? '-' : ' ';
+        let textCell;
+        if (l.segments && l.segments.length) {
+          const bg = l.segments.map(s => `<span class="${s.kind}">${escapeHtml(s.text)}</span>`).join('');
+          textCell = `<span class="prefix">${prefix}</span><span class="content"><span class="bg-layer">${bg}</span><code class="fg-layer"${langClass}>${escapeHtml(l.text)}</code></span>`;
+        } else {
+          textCell = `<span class="prefix">${prefix}</span><code${langClass}>${escapeHtml(l.text)}</code>`;
+        }
+        tr.innerHTML = `
+          <td class="ln" data-side="old">${oldL}</td>
+          <td class="ln" data-side="new">${newL}</td>
+          <td class="text">${textCell}</td>
+        `;
+        tr.querySelectorAll('td.ln').forEach(td => {
+          td.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            dragStart = { fi, hi, li, side: td.dataset.side === 'old' ? 'old' : (lineNum ? side : 'new') };
+            highlightRange(dragStart, dragStart);
+          });
+          td.addEventListener('mouseenter', (e) => {
+            if (!dragStart) return;
+            highlightRange(dragStart, { fi, hi, li });
+          });
+          td.addEventListener('mouseup', (e) => {
+            if (!dragStart) return;
+            const end = { fi, hi, li };
+            openCommentForm(dragStart, end);
+            dragStart = null;
+          });
+        });
+        tbl.appendChild(tr);
+      });
+      fileDiv.appendChild(tbl);
+    });
+    if (large) {
+      const toggle = document.createElement('div');
+      toggle.className = 'collapse-toggle';
+      toggle.textContent = activeFileFilter === f.path
+        ? `▼ ${changed} changed lines — click to collapse`
+        : `▶ ${changed} changed lines (large) — click to expand`;
+      toggle.addEventListener('click', () => {
+        if (fileDiv.classList.contains('collapsed')) {
+          fileDiv.classList.remove('collapsed');
+          toggle.textContent = `▼ ${changed} changed lines — click to collapse`;
+        } else {
+          fileDiv.classList.add('collapsed');
+          toggle.textContent = `▶ ${changed} changed lines (large) — click to expand`;
+          fileDiv.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        }
+      });
+      fileDiv.appendChild(toggle);
+    }
+    container.appendChild(fileDiv);
+  });
+  // Wire editor-open buttons
+  document.querySelectorAll('[data-open-file]').forEach(b => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openInEditor(b.dataset.openFile, b.dataset.openLine || 1);
+    });
+  });
+  if (window.hljs) {
+    document.querySelectorAll('td.text code:not(.fg-layer), td.text code.fg-layer').forEach(el => {
+      try { hljs.highlightElement(el); } catch (e) {}
+    });
+  }
+  renderComments();
+}
+
+function highlightRange(a, b) {
+  document.querySelectorAll('tr.selected').forEach(r => r.classList.remove('selected'));
+  if (a.fi !== b.fi || a.hi !== b.hi) return;
+  const [lo, hi] = a.li <= b.li ? [a.li, b.li] : [b.li, a.li];
+  for (let i = lo; i <= hi; i++) {
+    const tr = document.querySelector(`tr[data-fi="${a.fi}"][data-hi="${a.hi}"][data-li="${i}"]`);
+    if (tr) tr.classList.add('selected');
+  }
+}
+
+function openCommentForm(a, b) {
+  if (a.fi !== b.fi || a.hi !== b.hi) {
+    document.querySelectorAll('tr.selected').forEach(r => r.classList.remove('selected'));
+    return;
+  }
+  const [lo, hi] = a.li <= b.li ? [a.li, b.li] : [b.li, a.li];
+  const file = DATA.files[a.fi];
+  const hunk = file.hunks[a.hi];
+  const lines = hunk.lines.slice(lo, hi + 1);
+  const snippet = lines.map(l => {
+    const prefix = l.kind === 'add' ? '+' : l.kind === 'del' ? '-' : ' ';
+    return prefix + l.text;
+  }).join('\n');
+  const firstLine = lines[0];
+  const lastLine = lines[lines.length - 1];
+  const side = a.side || 'new';
+  const startNum = side === 'old' ? (firstLine.old_line || firstLine.new_line) : (firstLine.new_line || firstLine.old_line);
+  const endNum = side === 'old' ? (lastLine.old_line || lastLine.new_line) : (lastLine.new_line || lastLine.old_line);
+
+  // Insert a comment form row after `hi` (last row of selection)
+  const anchor = document.querySelector(`tr[data-fi="${a.fi}"][data-hi="${a.hi}"][data-li="${hi}"]`);
+  if (!anchor) return;
+  // Remove existing form
+  document.querySelectorAll('tr.comment-form-row').forEach(r => r.remove());
+
+  const tr = document.createElement('tr');
+  tr.className = 'comment-row comment-form-row';
+  tr.innerHTML = `
+    <td colspan="3">
+      <div class="comment-form">
+        <div style="color: var(--muted); margin-bottom: 4px;">${escapeHtml(file.path)}:${startNum}${endNum !== startNum ? '-' + endNum : ''}</div>
+        <textarea autofocus placeholder="Comment for the agent..."></textarea>
+        <div class="actions">
+          <button type="button">Add comment</button>
+          <button type="button" class="cancel">Cancel</button>
+        </div>
+      </div>
+    </td>
+  `;
+  anchor.parentNode.insertBefore(tr, anchor.nextSibling);
+  const ta = tr.querySelector('textarea');
+  ta.focus();
+  tr.querySelector('button').addEventListener('click', () => {
+    const body = ta.value.trim();
+    if (!body) { tr.remove(); return; }
+    COMMENTS.push({
+      id: nextId++,
+      path: file.path,
+      side,
+      line: startNum,
+      end_line: endNum,
+      snippet,
+      body,
+    });
+    tr.remove();
+    document.querySelectorAll('tr.selected').forEach(r => r.classList.remove('selected'));
+    renderComments();
+  });
+  tr.querySelector('button.cancel').addEventListener('click', () => {
+    tr.remove();
+    document.querySelectorAll('tr.selected').forEach(r => r.classList.remove('selected'));
+  });
+  ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      tr.querySelector('button').click();
+    } else if (e.key === 'Escape') {
+      tr.querySelector('button.cancel').click();
+    }
+  });
+}
+
+function updateViewing() {
+  document.getElementById('viewing').textContent = activeFileFilter || 'All files';
+}
+
+document.getElementById('sidebarToggle').addEventListener('click', () => {
+  const hidden = document.querySelector('.layout').classList.toggle('sidebar-hidden');
+  try { localStorage.setItem('gutter_sidebar_hidden', hidden ? '1' : '0'); } catch (e) {}
+});
+if (localStorage.getItem('gutter_sidebar_hidden') === '1') {
+  document.querySelector('.layout').classList.add('sidebar-hidden');
+}
+
+const HLJS_DARK = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css';
+const HLJS_LIGHT = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css';
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('hljs-theme').href = theme === 'light' ? HLJS_LIGHT : HLJS_DARK;
+  document.getElementById('themeToggle').textContent = theme === 'light' ? '☀' : '🌙';
+}
+const savedTheme = (() => { try { return localStorage.getItem('gutter_theme'); } catch (e) { return null; } })() || 'dark';
+applyTheme(savedTheme);
+document.getElementById('themeToggle').addEventListener('click', () => {
+  const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+  applyTheme(next);
+  try { localStorage.setItem('gutter_theme', next); } catch (e) {}
+});
+
+document.getElementById('copyBtn').addEventListener('click', async () => {
+  const status = document.getElementById('status');
+  status.className = 'status';
+  status.textContent = 'copying…';
+  try {
+    const r = await fetch('/markdown', { method: 'POST', body: JSON.stringify({
+      general: document.getElementById('general').value,
+      comments: COMMENTS.map(({ id, prior, ...rest }) => rest),
+    }) });
+    if (!r.ok) throw new Error(await r.text());
+    const md = await r.text();
+    await navigator.clipboard.writeText(md);
+    status.className = 'status ok';
+    status.textContent = `copied ${md.length} chars`;
+  } catch (e) {
+    status.className = 'status err';
+    status.textContent = 'copy failed: ' + e.message;
+  }
+});
+
+function renderSidebar() {
+  const ul = document.getElementById('fileList');
+  ul.innerHTML = '';
+  DATA.files.forEach(f => {
+    const li = document.createElement('li');
+    li.dataset.path = f.path;
+    if (activeFileFilter === f.path) li.classList.add('active');
+    const slash = f.path.lastIndexOf('/');
+    const dir = slash >= 0 ? f.path.slice(0, slash + 1) : '';
+    const base = slash >= 0 ? f.path.slice(slash + 1) : f.path;
+    li.innerHTML = `
+      <span class="path" title="${escapeHtml(f.path)}"><span class="dir">${escapeHtml(dir)}</span>${escapeHtml(base)}</span>
+      <span class="counts"><span class="add">+${f.add_count}</span> <span class="del">−${f.del_count}</span></span>
+    `;
+    li.addEventListener('click', () => {
+      if (activeFileFilter === f.path) {
+        activeFileFilter = null;
+      } else {
+        activeFileFilter = f.path;
+      }
+      document.getElementById('clearFilter').style.display = activeFileFilter ? '' : 'none';
+      render();
+      const el = document.querySelector(`#files .file[data-path="${CSS.escape(f.path)}"]`);
+      if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+    if (textFilter && !f.path.toLowerCase().includes(textFilter)) li.classList.add('hidden');
+    ul.appendChild(li);
+  });
+}
+
+document.getElementById('fileFilter').addEventListener('input', (e) => {
+  textFilter = e.target.value.trim().toLowerCase();
+  renderSidebar();
+});
+document.getElementById('clearFilter').addEventListener('click', () => {
+  activeFileFilter = null;
+  document.getElementById('clearFilter').style.display = 'none';
+  render();
+});
+
+async function openInEditor(path, line) {
+  try {
+    const r = await fetch(`/open?path=${encodeURIComponent(path)}&line=${encodeURIComponent(line)}`);
+    if (!r.ok) {
+      const status = document.getElementById('status');
+      status.className = 'status err';
+      status.textContent = 'open: ' + await r.text();
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function findAnchor(c) {
+  const fi = DATA.files.findIndex(f => f.path === c.path);
+  if (fi < 0) return null;
+  const file = DATA.files[fi];
+  const target = c.end_line || c.line;
+  for (let hi = 0; hi < file.hunks.length; hi++) {
+    const h = file.hunks[hi];
+    for (let li = 0; li < h.lines.length; li++) {
+      const l = h.lines[li];
+      if (l.old_line === target || l.new_line === target) {
+        return { fi, hi, li, el: document.querySelector(`tr[data-fi="${fi}"][data-hi="${hi}"][data-li="${li}"]`) };
+      }
+    }
+  }
+  return null;
+}
+
+function markLineNumbers() {
+  document.querySelectorAll('td.ln.has-comment').forEach(td => td.classList.remove('has-comment'));
+  COMMENTS.forEach(c => {
+    const fi = DATA.files.findIndex(f => f.path === c.path);
+    if (fi < 0) return;
+    const file = DATA.files[fi];
+    const lo = c.line, hi = c.end_line || c.line;
+    for (let hii = 0; hii < file.hunks.length; hii++) {
+      const h = file.hunks[hii];
+      for (let li = 0; li < h.lines.length; li++) {
+        const l = h.lines[li];
+        const num = c.side === 'old' ? l.old_line : l.new_line;
+        if (num && num >= lo && num <= hi) {
+          const tr = document.querySelector(`tr[data-fi="${fi}"][data-hi="${hii}"][data-li="${li}"]`);
+          if (tr) {
+            const td = tr.querySelector(`td.ln[data-side="${c.side}"]`);
+            if (td) td.classList.add('has-comment');
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderComments() {
+  document.querySelectorAll('tr.saved-comment-row').forEach(r => r.remove());
+  const unattached = [];
+  COMMENTS.forEach(c => {
+    const anchor = findAnchor(c);
+    if (!anchor || !anchor.el) { unattached.push(c); return; }
+    const tr = document.createElement('tr');
+    tr.className = 'comment-row saved-comment-row';
+    const range = c.end_line && c.end_line !== c.line ? '-' + c.end_line : '';
+    const openBtn = HAS_EDITOR ? `<button type="button" class="open-btn" data-id="${c.id}" data-action="open">open</button>` : '';
+    tr.innerHTML = `
+      <td colspan="3">
+        <div class="saved-comment ${c.prior ? 'prior' : ''}">
+          <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}</div>
+          <div class="body">${escapeHtml(c.body)}</div>
+          <div class="controls">
+            <button type="button" data-id="${c.id}" data-action="edit">edit</button>
+            <button type="button" data-id="${c.id}" data-action="del">delete</button>
+            ${openBtn}
+          </div>
+        </div>
+      </td>
+    `;
+    anchor.el.parentNode.insertBefore(tr, anchor.el.nextSibling);
+    tr.querySelectorAll('button').forEach(b => {
+      b.addEventListener('click', () => {
+        const id = +b.dataset.id;
+        const action = b.dataset.action;
+        const idx = COMMENTS.findIndex(x => x.id === id);
+        if (idx < 0) return;
+        if (action === 'del') {
+          COMMENTS.splice(idx, 1);
+          renderComments();
+        } else if (action === 'edit') {
+          openEditModal(COMMENTS[idx]);
+        } else if (action === 'open') {
+          openInEditor(COMMENTS[idx].path, COMMENTS[idx].line);
+        }
+      });
+    });
+  });
+  renderUnattached(unattached);
+  markLineNumbers();
+}
+
+function renderUnattached(list) {
+  let panel = document.getElementById('unattached');
+  if (!list.length) {
+    if (panel) panel.remove();
+    return;
+  }
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'unattached';
+    panel.className = 'file';
+    document.querySelector('main').insertBefore(panel, document.getElementById('files'));
+  }
+  panel.innerHTML = `<h3 style="color: #d29922;">Prior comments without matching diff lines (${list.length})</h3>` +
+    list.map(c => {
+      const range = c.end_line && c.end_line !== c.line ? '-' + c.end_line : '';
+      return `<div style="padding: 10px 12px; border-top: 1px solid var(--border);">
+        <div class="saved-comment prior">
+          <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}</div>
+          <div class="body">${escapeHtml(c.body)}</div>
+          <div class="controls">
+            <button type="button" data-id="${c.id}" data-action="edit">edit</button>
+            <button type="button" data-id="${c.id}" data-action="del">delete</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  panel.querySelectorAll('button').forEach(b => {
+    b.addEventListener('click', () => {
+      const id = +b.dataset.id;
+      const action = b.dataset.action;
+      const idx = COMMENTS.findIndex(x => x.id === id);
+      if (idx < 0) return;
+      if (action === 'del') { COMMENTS.splice(idx, 1); renderComments(); }
+      else if (action === 'edit') { openEditModal(COMMENTS[idx]); }
+    });
+  });
+}
+
+let editingId = null;
+function openEditModal(c) {
+  editingId = c.id;
+  const range = c.end_line && c.end_line !== c.line ? '-' + c.end_line : '';
+  document.getElementById('editLoc').textContent = `${c.path}:${c.line}${range}`;
+  document.getElementById('editBody').value = c.body;
+  document.getElementById('editModal').classList.add('show');
+  setTimeout(() => document.getElementById('editBody').focus(), 0);
+}
+function closeEditModal() {
+  editingId = null;
+  document.getElementById('editModal').classList.remove('show');
+}
+document.getElementById('editCancel').addEventListener('click', closeEditModal);
+document.getElementById('editSave').addEventListener('click', () => {
+  if (editingId == null) return;
+  const c = COMMENTS.find(x => x.id === editingId);
+  if (!c) return closeEditModal();
+  const v = document.getElementById('editBody').value.trim();
+  if (!v) { COMMENTS.splice(COMMENTS.indexOf(c), 1); }
+  else { c.body = v; c.prior = false; }
+  closeEditModal();
+  renderComments();
+});
+document.getElementById('editBody').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) document.getElementById('editSave').click();
+  else if (e.key === 'Escape') closeEditModal();
+});
+document.getElementById('editModal').addEventListener('click', (e) => {
+  if (e.target.id === 'editModal') closeEditModal();
+});
+
+async function save() {
+  const status = document.getElementById('status');
+  status.className = 'status';
+  status.textContent = 'saving…';
+  const body = {
+    general: document.getElementById('general').value,
+    comments: COMMENTS.map(({id, ...rest}) => rest),
+  };
+  try {
+    const r = await fetch('/save', { method: 'POST', body: JSON.stringify(body) });
+    const t = await r.text();
+    if (r.ok) {
+      status.className = 'status ok';
+      status.textContent = t.trim();
+    } else {
+      status.className = 'status err';
+      status.textContent = 'error: ' + t;
+    }
+  } catch (e) {
+    status.className = 'status err';
+    status.textContent = 'error: ' + e.message;
+  }
+}
+
+async function quit() {
+  await fetch('/quit');
+  document.body.innerHTML = '<main><p style="padding:20px;color:var(--muted)">Closed. You can close this tab.</p></main>';
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+document.addEventListener('mouseup', () => { if (dragStart) { /* handled per-cell */ } });
+load();
+</script>
+</body>
+</html>

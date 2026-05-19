@@ -217,9 +217,8 @@ func main() {
 	if *rev == "" {
 		if vcs == "jj" {
 			*rev = "@"
-		} else {
-			*rev = "@{u}"
 		}
+		// For git, leave rev empty to diff the working tree against HEAD.
 	}
 
 	outPath := *output
@@ -389,7 +388,11 @@ func main() {
 	url := fmt.Sprintf("http://%s", ln.Addr().String())
 	fmt.Println("gutter:", url)
 	fmt.Println("output:   ", outAbs)
-	fmt.Println("rev:      ", *rev, "("+vcs+")")
+	displayRev := *rev
+	if displayRev == "" {
+		displayRev = "HEAD (dirty)"
+	}
+	fmt.Println("rev:      ", displayRev, "("+vcs+")")
 
 	if *open {
 		go openBrowser(url)
@@ -419,8 +422,10 @@ func getDiff(vcs, rev string) (string, error) {
 	var cmd *exec.Cmd
 	if vcs == "jj" {
 		cmd = exec.Command("jj", "diff", "--git", "-r", rev)
-	} else {
+	} else if rev != "" {
 		cmd = exec.Command("git", "diff", rev)
+	} else {
+		cmd = exec.Command("git", "diff", "HEAD")
 	}
 	var out, errOut bytes.Buffer
 	cmd.Stdout = &out

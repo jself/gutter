@@ -285,7 +285,7 @@ func main() {
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		tmpl.Execute(w, map[string]any{
+		tmpl.Execute(w, map[string]interface{}{
 			"Rev":       *rev,
 			"VCS":       vcs,
 			"Out":       outAbs,
@@ -774,7 +774,7 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-func die(format string, a ...any) {
+func die(format string, a ...interface{}) {
 	fmt.Fprintf(os.Stderr, "gutter: "+format+"\n", a...)
 	os.Exit(1)
 }

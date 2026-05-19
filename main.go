@@ -112,11 +112,12 @@ func mergeConfigFile(c *Config, path string) {
 }
 
 type File struct {
-	Path     string `json:"path"`
-	Lang     string `json:"lang"`
-	Hunks    []Hunk `json:"hunks"`
-	AddCount int    `json:"add_count"`
-	DelCount int    `json:"del_count"`
+	Path      string `json:"path"`
+	Lang      string `json:"lang"`
+	Hunks     []Hunk `json:"hunks"`
+	AddCount  int    `json:"add_count"`
+	DelCount  int    `json:"del_count"`
+	Untracked bool   `json:"untracked,omitempty"`
 }
 
 var extLang = map[string]string{
@@ -191,7 +192,7 @@ func main() {
 	cfg := loadConfig()
 
 	var (
-		rev       = flag.String("r", cfg.Rev, "revset (jj) or rev (git); default: jj @ (current change) or git @{u} (vs upstream)")
+		rev       = flag.String("r", cfg.Rev, "revset (jj) or rev (git); default: jj @ (current change) or git working tree")
 		output    = flag.String("o", cfg.Output, "output review filename")
 		outDir    = flag.String("dir", cfg.Dir, "directory for the output file (e.g. \".claude\")")
 		port      = flag.Int("port", cfg.Port, "HTTP port (0 = random)")
@@ -234,7 +235,7 @@ func main() {
 	}
 
 	computeData := func() (DiffData, error) {
-		diff, err := getDiff(vcs, *rev)
+		diff, untrackedPaths, err := getDiff(vcs, *rev)
 		if err != nil {
 			return DiffData{}, fmt.Errorf("getting diff: %w", err)
 		}
@@ -243,6 +244,9 @@ func main() {
 			return DiffData{}, fmt.Errorf("parsing diff: %w", err)
 		}
 		for fi := range files {
+			if untrackedPaths[files[fi].Path] {
+				files[fi].Untracked = true
+			}
 			for hi := range files[fi].Hunks {
 				annotateIntraLine(&files[fi].Hunks[hi])
 				for _, l := range files[fi].Hunks[hi].Lines {
@@ -265,8 +269,7 @@ func main() {
 		die("%v", err)
 	}
 	if len(data.Files) == 0 {
-		fmt.Fprintln(os.Stderr, "No changes found for", *rev)
-		os.Exit(0)
+		fmt.Fprintln(os.Stderr, "No changes found yet — server will stay up, reload to check again")
 	}
 	if len(data.Prior) > 0 || data.PriorGen != "" {
 		fmt.Fprintf(os.Stderr, "loaded %d prior comment(s) from %s\n", len(data.Prior), outAbs)
@@ -390,7 +393,7 @@ func main() {
 	fmt.Println("output:   ", outAbs)
 	displayRev := *rev
 	if displayRev == "" {
-		displayRev = "HEAD (dirty)"
+		displayRev = "(working tree)"
 	}
 	fmt.Println("rev:      ", displayRev, "("+vcs+")")
 
@@ -418,22 +421,71 @@ func detectVCS() (string, error) {
 	return "", fmt.Errorf("not a jj or git repository")
 }
 
-func getDiff(vcs, rev string) (string, error) {
+func getDiff(vcs, rev string) (string, map[string]bool, error) {
 	var cmd *exec.Cmd
 	if vcs == "jj" {
 		cmd = exec.Command("jj", "diff", "--git", "-r", rev)
 	} else if rev != "" {
 		cmd = exec.Command("git", "diff", rev)
 	} else {
-		cmd = exec.Command("git", "diff", "HEAD")
+		cmd = exec.Command("git", "diff")
 	}
 	var out, errOut bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("%v: %s", err, errOut.String())
+		return "", nil, fmt.Errorf("%v: %s", err, errOut.String())
 	}
-	return out.String(), nil
+	diff := out.String()
+	untrackedPaths := map[string]bool{}
+
+	// For git working-tree mode, append synthetic diffs for untracked files.
+	if vcs == "git" && rev == "" {
+		extra, paths, err := gitUntrackedDiff()
+		if err == nil && extra != "" {
+			diff += extra
+			untrackedPaths = paths
+		}
+	}
+
+	return diff, untrackedPaths, nil
+}
+
+// gitUntrackedDiff lists untracked files and generates git-style diff output
+// so they appear as new files in the review UI.
+func gitUntrackedDiff() (string, map[string]bool, error) {
+	cmd := exec.Command("git", "ls-files", "--others", "--exclude-standard")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", nil, err
+	}
+	paths := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+	if len(paths) == 1 && paths[0] == "" {
+		return "", nil, nil
+	}
+	pathSet := make(map[string]bool, len(paths))
+	var b strings.Builder
+	for _, p := range paths {
+		content, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		pathSet[p] = true
+		lines := strings.Split(string(content), "\n")
+		// Drop trailing empty line from final newline
+		if len(lines) > 0 && lines[len(lines)-1] == "" {
+			lines = lines[:len(lines)-1]
+		}
+		fmt.Fprintf(&b, "diff --git a/%s b/%s\n", p, p)
+		fmt.Fprintf(&b, "new file mode 100644\n")
+		fmt.Fprintf(&b, "--- /dev/null\n")
+		fmt.Fprintf(&b, "+++ b/%s\n", p)
+		fmt.Fprintf(&b, "@@ -0,0 +1,%d @@\n", len(lines))
+		for _, ln := range lines {
+			fmt.Fprintf(&b, "+%s\n", ln)
+		}
+	}
+	return b.String(), pathSet, nil
 }
 
 func parseDiff(s string) ([]File, error) {

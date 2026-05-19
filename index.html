@@ -74,13 +74,14 @@
   .file .file-meta { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: 8px; }
   .file .file-meta .add { color: var(--add-fg); }
   .file .file-meta .del { color: var(--del-fg); }
+  .untracked-badge { display: inline-block; background: #2ea04370; color: #3fb950; border: 1px solid #3fb95040; font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle; text-transform: uppercase; letter-spacing: 0.3px; cursor: default; }
   .file h3 .open-btn { float: right; background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; border-radius: 3px; cursor: pointer; font: inherit; font-size: 11px; }
   .file h3 .open-btn:hover { color: var(--accent); border-color: var(--accent); }
   .saved-comment .controls .open-btn { color: var(--accent); border-color: rgba(88, 166, 255, 0.4); }
-  .file { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 18px; overflow: hidden; }
+  .file { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 18px; overflow-x: auto; overflow-y: hidden; }
   .file h3 { margin: 0; padding: 8px 12px; background: var(--panel-strong); border-bottom: 1px solid var(--border); font-size: 13px; color: var(--accent); }
   .hunk-header { padding: 4px 12px; color: var(--muted); background: var(--panel-deep); border-bottom: 1px solid var(--border); font-size: 12px; }
-  table.diff { width: 100%; border-collapse: collapse; font-family: inherit; }
+  table.diff { width: 100%; min-width: max-content; border-collapse: collapse; font-family: inherit; }
   table.diff td { padding: 0 8px; vertical-align: top; white-space: pre; line-height: 1.5; }
   td.ln { color: var(--muted); text-align: right; user-select: none; width: 48px; cursor: pointer; border-right: 1px solid var(--border); }
   td.ln:hover { background: var(--selected); color: var(--accent); }
@@ -223,8 +224,9 @@ function render() {
     const changed = f.add_count + f.del_count;
     const large = COLLAPSE_THRESHOLD > 0 && changed > COLLAPSE_THRESHOLD;
     const meta = `<span class="file-meta"><span class="add">+${f.add_count}</span> <span class="del">−${f.del_count}</span></span>`;
+    const untrackedTag = f.untracked ? '<span class="untracked-badge" title="Untracked file (not yet added to git)">untracked</span>' : '';
     const openBtn = HAS_EDITOR ? `<button class="open-btn" type="button" data-open-file="${escapeHtml(f.path)}">open in editor</button>` : '';
-    fileDiv.innerHTML = `<h3>${openBtn}${escapeHtml(f.path)}${meta}</h3>`;
+    fileDiv.innerHTML = `<h3>${openBtn}${escapeHtml(f.path)}${untrackedTag}${meta}</h3>`;
     if (large && activeFileFilter !== f.path) {
       fileDiv.classList.add('collapsed');
     }
@@ -453,6 +455,7 @@ function renderSidebar() {
     const base = slash >= 0 ? f.path.slice(slash + 1) : f.path;
     li.innerHTML = `
       <span class="path" title="${escapeHtml(f.path)}"><span class="dir">${escapeHtml(dir)}</span>${escapeHtml(base)}</span>
+      ${f.untracked ? '<span class="untracked-badge" title="Untracked file (not yet added to git)">U</span>' : ''}
       <span class="counts"><span class="add">+${f.add_count}</span> <span class="del">−${f.del_count}</span></span>
     `;
     li.addEventListener('click', () => {

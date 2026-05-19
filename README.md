@@ -40,7 +40,7 @@ Works with both [jj](https://github.com/jj-vcs/jj) and git.
 
 ## Install
 
-Requires Go 1.21+.
+Requires Go 1.16+.
 
 ```
 git clone https://github.com/jself/gutter ~/code/gutter
@@ -77,7 +77,7 @@ that have been addressed, add new ones, and save again.
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `-r <revset>` | `@` (jj) / `@{u}` (git) | What to diff. jj: a revset, e.g. `main..@`. git: a rev, e.g. `HEAD~3`. |
+| `-r <revset>` | `@` (jj) / working tree (git) | What to diff. jj: a revset, e.g. `main..@`. git: a rev, e.g. `HEAD~3`, or empty for unstaged changes. |
 | `-o <path>` | `review.md` | Output file for the markdown review. |
 | `-port <n>` | random | HTTP port to listen on. |
 | `-open=false` | `true` | Don't auto-launch the browser. |
@@ -109,6 +109,7 @@ config (`$XDG_CONFIG_HOME/gutter/config.json`, falling back to
 ```jsonc
 // ~/.config/gutter/config.json   (or ./.gutter.json for a per-project override)
 {
+  "rev": "@{u}",
   "dir": ".claude",
   "output": "review.md",
   "editor": "nvim --server /tmp/nvim.sock --remote-send ':e {file}<CR>:{line}<CR>'",
@@ -117,8 +118,10 @@ config (`$XDG_CONFIG_HOME/gutter/config.json`, falling back to
 }
 ```
 
-The example above writes reviews to `.claude/review.md`, opens links in a
-running nvim, and collapses files over 120 changed lines.
+The example above diffs against upstream (`@{u}`), writes reviews to
+`.claude/review.md`, opens links in a running nvim, and collapses files over
+120 changed lines. Remove the `"rev"` key (or omit it) to use the default
+(working tree for git, `@` for jj).
 
 ## Editor templates
 
@@ -183,10 +186,30 @@ panel at the top so you don't lose them.
 
 ## Workflow notes
 
-- Default jj revset is `@` (current change) — matches `jj status`. For
-  reviewing a whole branch use `-r 'main..@'` or similar.
-- Default git rev is `@{u}` (vs upstream). Use `-r HEAD~3` for the last
-  three commits, or `-r main` for branch-vs-main.
+### Revset examples
+
+#### git
+
+| `-r` value | What it diffs | Equivalent |
+|---|---|---|
+| _(omitted)_ | Unstaged working tree changes + untracked files | `git diff` |
+| `-r --cached` | Staged changes (index vs HEAD) | `git diff --cached` |
+| `-r HEAD` | All uncommitted changes (staged + unstaged) | `git diff HEAD` |
+| `-r HEAD~3` | Working tree vs 3 commits ago | `git diff HEAD~3` |
+| `-r origin/master` | Working tree vs remote master | `git diff origin/master` |
+| `-r @{u}` | Working tree vs upstream tracking branch | `git diff @{u}` |
+| `-r main` | Working tree vs local main branch | `git diff main` |
+
+#### jj
+
+| `-r` value | What it diffs | Equivalent |
+|---|---|---|
+| _(omitted)_ | Current change (default `@`) | `jj diff -r @` |
+| `-r @-` | Parent change | `jj diff -r @-` |
+| `-r 'main..@'` | Whole branch since main | `jj diff -r 'main..@'` |
+
+### Other tips
+
 - For headless workflows, `-open=false -port 8080` gives a stable URL.
 
 ## Build from source

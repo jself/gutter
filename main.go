@@ -391,7 +391,7 @@ func main() {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		md := renderMarkdown(*rev, vcs, req)
+		md := renderMarkdown(*rev, vcs, nil, req)
 		if err := os.WriteFile(outAbs, []byte(md), 0644); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -414,7 +414,7 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		w.Write([]byte(renderMarkdown(*rev, vcs, req)))
+		w.Write([]byte(renderMarkdown(*rev, vcs, nil, req)))
 	})
 
 	mux.HandleFunc("/quit", func(w http.ResponseWriter, r *http.Request) {
@@ -614,9 +614,23 @@ func parseHunkHeader(ln string) Hunk {
 	return h
 }
 
-func renderMarkdown(rev, vcs string, req SaveRequest) string {
+func renderMarkdown(rev, vcs string, pr *PRInfo, req SaveRequest) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Review of `%s` (%s)\n\n", rev, vcs)
+	if pr != nil {
+		fmt.Fprintf(&b, "# Review of PR #%d (github)\n\n", pr.Number)
+		fmt.Fprintf(&b, "## PR\n\n")
+		fmt.Fprintf(&b, "- repo: %s\n", pr.Repo)
+		fmt.Fprintf(&b, "- number: %d\n", pr.Number)
+		fmt.Fprintf(&b, "- head: %s\n", pr.Head)
+		fmt.Fprintf(&b, "- base: %s\n\n", pr.Base)
+		fmt.Fprintf(&b, "NOTE: This is a GitHub PR review. The local working tree is NOT the PR's code —\n")
+		fmt.Fprintf(&b, "do not read local files to understand the changes. Use `gh pr diff %d` (or\n", pr.Number)
+		fmt.Fprintf(&b, "`gh pr view %d`) to see the actual changes these comments refer to.\n", pr.Number)
+		fmt.Fprintf(&b, "To post a comment: `gh` review-comment API — use `head` as the commit id,\n")
+		fmt.Fprintf(&b, "`path`/`line` from each comment, side RIGHT for added/context, LEFT for removed.\n\n")
+	} else {
+		fmt.Fprintf(&b, "# Review of `%s` (%s)\n\n", rev, vcs)
+	}
 	if strings.TrimSpace(req.General) != "" {
 		b.WriteString("## General feedback\n\n")
 		b.WriteString(strings.TrimSpace(req.General))
@@ -628,6 +642,9 @@ func renderMarkdown(rev, vcs string, req SaveRequest) string {
 			loc := fmt.Sprintf("%s:%d", c.Path, c.Line)
 			if c.EndLine != 0 && c.EndLine != c.Line {
 				loc = fmt.Sprintf("%s:%d-%d", c.Path, c.Line, c.EndLine)
+			}
+			if c.Side == "old" {
+				loc += " (LEFT)"
 			}
 			fmt.Fprintf(&b, "### %s\n\n", loc)
 			if strings.TrimSpace(c.Snippet) != "" {

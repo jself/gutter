@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParsePRView(t *testing.T) {
 	in := []byte(`{
@@ -28,5 +31,48 @@ func TestParsePRViewBadURL(t *testing.T) {
 	in := []byte(`{"number":1,"headRefOid":"x","baseRefOid":"y","url":"not-a-url"}`)
 	if _, err := parsePRView(in); err == nil {
 		t.Fatal("expected error for unparseable url, got nil")
+	}
+}
+
+func TestRenderMarkdownPRBlock(t *testing.T) {
+	pr := &PRInfo{Repo: "octo/widgets", Number: 123, Head: "abc123", Base: "def456"}
+	req := SaveRequest{
+		General: "Looks good overall.",
+		Comments: []Comment{
+			{Path: "a.go", Side: "new", Line: 10, Body: "new-side note"},
+			{Path: "b.go", Side: "old", Line: 5, Body: "old-side note"},
+		},
+	}
+	md := renderMarkdown("", "git", pr, req)
+
+	for _, want := range []string{
+		"# Review of PR #123 (github)",
+		"## PR",
+		"- repo: octo/widgets",
+		"- number: 123",
+		"- head: abc123",
+		"- base: def456",
+		"local working tree is NOT the PR's code",
+		"gh pr diff 123",
+		"### a.go:10\n",        // new side: no suffix
+		"### b.go:5 (LEFT)\n",  // old side: suffix
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("rendered markdown missing %q\n---\n%s", want, md)
+		}
+	}
+}
+
+func TestRenderMarkdownLocalUnchanged(t *testing.T) {
+	req := SaveRequest{Comments: []Comment{{Path: "a.go", Side: "new", Line: 10, Body: "x"}}}
+	md := renderMarkdown("@", "jj", nil, req)
+	if strings.Contains(md, "## PR") {
+		t.Errorf("local review should not contain a PR block:\n%s", md)
+	}
+	if !strings.Contains(md, "# Review of `@` (jj)") {
+		t.Errorf("local title changed:\n%s", md)
+	}
+	if !strings.Contains(md, "### a.go:10\n") {
+		t.Errorf("new-side anchor should have no suffix:\n%s", md)
 	}
 }

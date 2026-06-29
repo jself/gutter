@@ -78,6 +78,7 @@ that have been addressed, add new ones, and save again.
 | Flag | Default | Purpose |
 |---|---|---|
 | `-r <revset>` | `@` (jj) / working tree (git) | What to diff. jj: a revset, e.g. `main..@`. git: a rev, e.g. `HEAD~3`, or empty for unstaged changes. |
+| `-pr <number\|url>` | — | Review a GitHub PR instead of a local diff. See [Reviewing a GitHub PR](#reviewing-a-github-pr). |
 | `-o <path>` | `review.md` | Output file for the markdown review. |
 | `-port <n>` | random | HTTP port to listen on. |
 | `-open=false` | `true` | Don't auto-launch the browser. |
@@ -97,6 +98,7 @@ config (`$XDG_CONFIG_HOME/gutter/config.json`, falling back to
 | Variable | Maps to |
 |---|---|
 | `GUTTER_REV` | `-r` |
+| `GUTTER_PR` | `-pr` |
 | `GUTTER_OUTPUT` | `-o` |
 | `GUTTER_DIR` | `-dir` |
 | `GUTTER_PORT` | `-port` |
@@ -110,6 +112,7 @@ config (`$XDG_CONFIG_HOME/gutter/config.json`, falling back to
 // ~/.config/gutter/config.json   (or ./.gutter.json for a per-project override)
 {
   "rev": "@{u}",
+  "pr": "",
   "dir": ".claude",
   "output": "review.md",
   "editor": "nvim --server /tmp/nvim.sock --remote-send ':e {file}<CR>:{line}<CR>'",
@@ -185,6 +188,39 @@ panel at the top so you don't lose them.
 - A 💬 marker on a line number means you've already commented on that line.
 
 ## Workflow notes
+
+### Reviewing a GitHub PR
+
+Requires the [`gh` CLI](https://cli.github.com/) installed and authenticated
+(`gh auth status`). Run from inside a local clone of the repo:
+
+```
+gutter -pr 123                                          # PR in the current repo
+gutter -pr https://github.com/owner/name/pull/123      # PR in any repo
+```
+
+The diff shown is fetched from GitHub via `gh pr diff` — your local working
+tree is not checked out or touched. You can be on a completely different branch.
+Because of this, "open in editor" links may not resolve to the PR's code.
+
+When you save `review.md`, it gains a `## PR` block:
+
+```markdown
+## PR
+
+repo: owner/name
+number: 123
+head: abc1234
+base: main
+
+> NOTE: the local working tree is NOT the PR's code. Use `gh pr diff 123` for
+> context. Post comments back with `gh api` using the head SHA, file path, and
+> line number. Use side RIGHT for added/context lines, LEFT for removed lines.
+> Inline comments on removed lines are marked with a ` (LEFT)` suffix.
+```
+
+This block tells the agent exactly how to load context and post comments back
+via `gh`.
 
 ### Revset examples
 

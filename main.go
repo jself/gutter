@@ -234,7 +234,12 @@ func repoFromPRURL(u string) (string, error) {
 	if len(parts) < 2 {
 		return "", fmt.Errorf("cannot parse repo from PR url %q", u)
 	}
-	return parts[len(parts)-2] + "/" + parts[len(parts)-1], nil
+	owner := parts[len(parts)-2]
+	name := parts[len(parts)-1]
+	if owner == "" || name == "" {
+		return "", fmt.Errorf("cannot parse repo from PR url %q", u)
+	}
+	return owner + "/" + name, nil
 }
 
 func main() {
@@ -712,7 +717,7 @@ func renderMarkdown(rev, vcs string, pr *PRInfo, req SaveRequest) string {
 			if c.EndLine != 0 && c.EndLine != c.Line {
 				loc = fmt.Sprintf("%s:%d-%d", c.Path, c.Line, c.EndLine)
 			}
-			if c.Side == "old" {
+			if pr != nil && c.Side == "old" {
 				loc += " (LEFT)"
 			}
 			fmt.Fprintf(&b, "### %s\n\n", loc)
@@ -888,6 +893,9 @@ func loadPrior(path string) ([]Comment, string) {
 
 	for _, ln := range lines {
 		switch {
+		case strings.HasPrefix(ln, "## PR"):
+			// Forge metadata block (PR review); intentionally ignored on read.
+			continue
 		case strings.HasPrefix(ln, "## General feedback"):
 			flushCur()
 			section = "general"

@@ -192,7 +192,9 @@ panel at the top so you don't lose them.
 ### Reviewing a GitHub PR
 
 Requires the [`gh` CLI](https://cli.github.com/) installed and authenticated
-(`gh auth status`). Run from inside a local clone of the repo:
+(`gh auth status`). Must be run from inside a git or jj repository — running
+from a non-repo directory exits with "not a jj or git repository". Run from
+inside a local clone of the repo:
 
 ```
 gutter -pr 123                                          # PR in the current repo
@@ -208,15 +210,16 @@ When you save `review.md`, it gains a `## PR` block:
 ```markdown
 ## PR
 
-repo: owner/name
-number: 123
-head: abc1234
-base: main
+- repo: owner/name
+- number: 123
+- head: abc1234
+- base: def456
 
-> NOTE: the local working tree is NOT the PR's code. Use `gh pr diff 123` for
-> context. Post comments back with `gh api` using the head SHA, file path, and
-> line number. Use side RIGHT for added/context lines, LEFT for removed lines.
-> Inline comments on removed lines are marked with a ` (LEFT)` suffix.
+NOTE: This is a GitHub PR review. The local working tree is NOT the PR's code —
+do not read local files to understand the changes. Use `gh pr diff 123` (or
+`gh pr view 123`) to see the actual changes these comments refer to.
+To post a comment: `gh` review-comment API — use `head` as the commit id,
+`path`/`line` from each comment, side RIGHT for added/context, LEFT for removed.
 ```
 
 This block tells the agent exactly how to load context and post comments back

@@ -116,3 +116,38 @@ func TestRenderMarkdownLocalUnchanged(t *testing.T) {
 		t.Errorf("new-side anchor should have no suffix:\n%s", md)
 	}
 }
+
+func TestRenderMarkdownLocalOldSideNoSuffix(t *testing.T) {
+	req := SaveRequest{Comments: []Comment{{Path: "a.go", Side: "old", Line: 3, Body: "del note"}}}
+	md := renderMarkdown("@", "jj", nil, req)
+	if strings.Contains(md, "(LEFT)") {
+		t.Errorf("local review should not emit LEFT suffix:\n%s", md)
+	}
+}
+
+func TestRepoFromPRURLDegenerateNoOwner(t *testing.T) {
+	// URL with no owner segment — "github.com" ends up as the name, empty string as owner.
+	if _, err := repoFromPRURL("https://github.com/pull/123"); err == nil {
+		t.Fatal("expected error for degenerate url with no owner, got nil")
+	}
+}
+
+func TestLoadPriorIgnoresPRBlock(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "review.md")
+	pr := &PRInfo{Repo: "octo/widgets", Number: 5, Head: "h", Base: "b"}
+	req := SaveRequest{
+		General:  "overall note",
+		Comments: []Comment{{Path: "c.go", Side: "new", Line: 7, Body: "inline note"}},
+	}
+	if err := os.WriteFile(path, []byte(renderMarkdown("", "git", pr, req)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, gen := loadPrior(path)
+	if gen != "overall note" {
+		t.Errorf("general feedback = %q, want %q", gen, "overall note")
+	}
+	if len(got) != 1 || got[0].Path != "c.go" || got[0].Line != 7 {
+		t.Errorf("comments = %+v, want one c.go:7 comment", got)
+	}
+}

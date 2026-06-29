@@ -188,6 +188,47 @@ type SaveRequest struct {
 	General  string    `json:"general"`
 }
 
+type PRInfo struct {
+	Repo   string // "owner/name"
+	Number int
+	Head   string // head commit SHA
+	Base   string // base commit SHA
+}
+
+// parsePRView turns `gh pr view <pr> --json number,headRefOid,baseRefOid,url`
+// output into a PRInfo. Repo ("owner/name") is derived from the canonical url.
+func parsePRView(b []byte) (PRInfo, error) {
+	var v struct {
+		Number     int    `json:"number"`
+		HeadRefOid string `json:"headRefOid"`
+		BaseRefOid string `json:"baseRefOid"`
+		URL        string `json:"url"`
+	}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return PRInfo{}, fmt.Errorf("parsing gh pr view output: %w", err)
+	}
+	repo, err := repoFromPRURL(v.URL)
+	if err != nil {
+		return PRInfo{}, err
+	}
+	return PRInfo{Repo: repo, Number: v.Number, Head: v.HeadRefOid, Base: v.BaseRefOid}, nil
+}
+
+// repoFromPRURL extracts "owner/name" from a PR url like
+// https://github.com/owner/name/pull/123.
+func repoFromPRURL(u string) (string, error) {
+	i := strings.Index(u, "/pull/")
+	if i < 0 {
+		return "", fmt.Errorf("cannot parse repo from PR url %q", u)
+	}
+	rest := strings.TrimRight(u[:i], "/")
+	parts := strings.Split(rest, "/")
+	if len(parts) < 2 {
+		return "", fmt.Errorf("cannot parse repo from PR url %q", u)
+	}
+	return parts[len(parts)-2] + "/" + parts[len(parts)-1], nil
+}
+
 func main() {
 	cfg := loadConfig()
 

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -60,6 +62,44 @@ func TestRenderMarkdownPRBlock(t *testing.T) {
 		if !strings.Contains(md, want) {
 			t.Errorf("rendered markdown missing %q\n---\n%s", want, md)
 		}
+	}
+}
+
+func TestLoadPriorRoundTripSide(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "review.md")
+
+	pr := &PRInfo{Repo: "octo/widgets", Number: 7, Head: "h", Base: "b"}
+	req := SaveRequest{Comments: []Comment{
+		{Path: "a.go", Side: "new", Line: 10, Body: "new note"},
+		{Path: "b.go", Side: "old", Line: 5, Body: "old note"},
+	}}
+	if err := os.WriteFile(path, []byte(renderMarkdown("", "git", pr, req)), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _ := loadPrior(path)
+	if len(got) != 2 {
+		t.Fatalf("got %d comments, want 2: %+v", len(got), got)
+	}
+	if got[0].Path != "a.go" || got[0].Line != 10 || got[0].Side != "new" {
+		t.Errorf("comment 0 = %+v, want a.go:10 side new", got[0])
+	}
+	if got[1].Path != "b.go" || got[1].Line != 5 || got[1].Side != "old" {
+		t.Errorf("comment 1 = %+v, want b.go:5 side old", got[1])
+	}
+}
+
+func TestLoadPriorLegacyNoSuffix(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "review.md")
+	legacy := "# Review of `@` (jj)\n\n## Inline comments\n\n### a.go:10-12\n\nbody here\n\n"
+	if err := os.WriteFile(path, []byte(legacy), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := loadPrior(path)
+	if len(got) != 1 || got[0].Side != "new" || got[0].Line != 10 || got[0].EndLine != 12 {
+		t.Fatalf("legacy parse = %+v, want a.go:10-12 side new", got)
 	}
 }
 

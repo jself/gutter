@@ -665,7 +665,7 @@ func renderMarkdown(rev, vcs string, pr *PRInfo, req SaveRequest) string {
 	return b.String()
 }
 
-var inlineHeaderRe = regexp.MustCompile(`^###\s+(.+?):(\d+)(?:-(\d+))?\s*$`)
+var inlineHeaderRe = regexp.MustCompile(`^###\s+(.+?):(\d+)(?:-(\d+))?(?:\s+\((LEFT)\))?\s*$`)
 var tokenRe = regexp.MustCompile(`[A-Za-z_][A-Za-z_0-9]*|\s+|.`)
 
 func tokenize(s string) []string {
@@ -844,7 +844,11 @@ func loadPrior(path string) ([]Comment, string) {
 				if m[3] != "" {
 					end, _ = strconv.Atoi(m[3])
 				}
-				cur = &Comment{Path: m[1], Side: "new", Line: start, EndLine: end}
+				side := "new"
+				if m[4] == "LEFT" {
+					side = "old"
+				}
+				cur = &Comment{Path: m[1], Side: side, Line: start, EndLine: end}
 				continue
 			}
 			if cur != nil {

@@ -29,6 +29,7 @@ type Config struct {
 	Open     bool   `json:"open,omitempty"`
 	Editor   string `json:"editor,omitempty"`
 	Collapse int    `json:"collapse,omitempty"`
+	PR       string `json:"pr,omitempty"`
 }
 
 func defaultConfig() Config {
@@ -75,6 +76,9 @@ func loadConfig() Config {
 			c.Collapse = n
 		}
 	}
+	if v := os.Getenv("GUTTER_PR"); v != "" {
+		c.PR = v
+	}
 	return c
 }
 
@@ -108,6 +112,9 @@ func mergeConfigFile(c *Config, path string) {
 	}
 	if f.Collapse != 0 {
 		c.Collapse = f.Collapse
+	}
+	if f.PR != "" {
+		c.PR = f.PR
 	}
 }
 
@@ -172,6 +179,7 @@ type DiffData struct {
 	Files    []File    `json:"files"`
 	Prior    []Comment `json:"prior"`
 	PriorGen string    `json:"prior_general,omitempty"`
+	PR       *PRInfo   `json:"pr,omitempty"`
 }
 
 type Comment struct {
@@ -188,6 +196,52 @@ type SaveRequest struct {
 	General  string    `json:"general"`
 }
 
+type PRInfo struct {
+	Repo   string // "owner/name"
+	Number int
+	Head   string // head commit SHA
+	Base   string // base commit SHA
+}
+
+// parsePRView turns `gh pr view <pr> --json number,headRefOid,baseRefOid,url`
+// output into a PRInfo. Repo ("owner/name") is derived from the canonical url.
+func parsePRView(b []byte) (PRInfo, error) {
+	var v struct {
+		Number     int    `json:"number"`
+		HeadRefOid string `json:"headRefOid"`
+		BaseRefOid string `json:"baseRefOid"`
+		URL        string `json:"url"`
+	}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return PRInfo{}, fmt.Errorf("parsing gh pr view output: %w", err)
+	}
+	repo, err := repoFromPRURL(v.URL)
+	if err != nil {
+		return PRInfo{}, err
+	}
+	return PRInfo{Repo: repo, Number: v.Number, Head: v.HeadRefOid, Base: v.BaseRefOid}, nil
+}
+
+// repoFromPRURL extracts "owner/name" from a PR url like
+// https://github.com/owner/name/pull/123.
+func repoFromPRURL(u string) (string, error) {
+	i := strings.Index(u, "/pull/")
+	if i < 0 {
+		return "", fmt.Errorf("cannot parse repo from PR url %q", u)
+	}
+	rest := strings.TrimRight(u[:i], "/")
+	parts := strings.Split(rest, "/")
+	if len(parts) < 2 {
+		return "", fmt.Errorf("cannot parse repo from PR url %q", u)
+	}
+	owner := parts[len(parts)-2]
+	name := parts[len(parts)-1]
+	if owner == "" || name == "" {
+		return "", fmt.Errorf("cannot parse repo from PR url %q", u)
+	}
+	return owner + "/" + name, nil
+}
+
 func main() {
 	cfg := loadConfig()
 
@@ -199,6 +253,7 @@ func main() {
 		open      = flag.Bool("open", cfg.Open, "open browser")
 		editorCmd = flag.String("editor", cfg.Editor, "editor command template; {file} and {line} are substituted (e.g. \"code -g {file}:{line}\")")
 		collapse  = flag.Int("collapse", cfg.Collapse, "auto-collapse files with more than N changed lines (0 disables)")
+		prArg     = flag.String("pr", cfg.PR, "review a GitHub PR by number or URL (uses the gh CLI)")
 	)
 	flag.Parse()
 
@@ -222,6 +277,15 @@ func main() {
 		// For git, leave rev empty to diff the working tree against HEAD.
 	}
 
+	var prInfo *PRInfo
+	if *prArg != "" {
+		info, err := githubPRInfo(*prArg)
+		if err != nil {
+			die("%v", err)
+		}
+		prInfo = &info
+	}
+
 	outPath := *output
 	if !filepath.IsAbs(outPath) && *outDir != "" {
 		outPath = filepath.Join(*outDir, outPath)
@@ -235,9 +299,23 @@ func main() {
 	}
 
 	computeData := func() (DiffData, error) {
-		diff, untrackedPaths, err := getDiff(vcs, *rev)
-		if err != nil {
-			return DiffData{}, fmt.Errorf("getting diff: %w", err)
+		var (
+			diff           string
+			untrackedPaths map[string]bool
+		)
+		if prInfo != nil {
+			d, err := githubPRDiff(*prArg)
+			if err != nil {
+				return DiffData{}, fmt.Errorf("getting PR diff: %w", err)
+			}
+			diff = d
+			untrackedPaths = map[string]bool{}
+		} else {
+			d, up, err := getDiff(vcs, *rev)
+			if err != nil {
+				return DiffData{}, fmt.Errorf("getting diff: %w", err)
+			}
+			diff, untrackedPaths = d, up
 		}
 		files, err := parseDiff(diff)
 		if err != nil {
@@ -260,7 +338,7 @@ func main() {
 			}
 		}
 		priorComments, priorGen := loadPrior(outAbs)
-		return DiffData{Rev: *rev, VCS: vcs, Files: files, Prior: priorComments, PriorGen: priorGen}, nil
+		return DiffData{Rev: *rev, VCS: vcs, Files: files, Prior: priorComments, PriorGen: priorGen, PR: prInfo}, nil
 	}
 
 	// Initial compute to surface "no changes" / load errors at startup.
@@ -285,11 +363,18 @@ func main() {
 
 	repoRoot, _ := repoRootDir(vcs)
 
+	displayHdrRev := *rev
+	displayHdrVCS := vcs
+	if prInfo != nil {
+		displayHdrRev = fmt.Sprintf("PR #%d", prInfo.Number)
+		displayHdrVCS = "github"
+	}
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		tmpl.Execute(w, map[string]interface{}{
-			"Rev":       *rev,
-			"VCS":       vcs,
+			"Rev":       displayHdrRev,
+			"VCS":       displayHdrVCS,
 			"Out":       outAbs,
 			"HasEditor": *editorCmd != "",
 			"Collapse":  *collapse,
@@ -350,7 +435,7 @@ func main() {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		md := renderMarkdown(*rev, vcs, req)
+		md := renderMarkdown(*rev, vcs, prInfo, req)
 		if err := os.WriteFile(outAbs, []byte(md), 0644); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -373,7 +458,7 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		w.Write([]byte(renderMarkdown(*rev, vcs, req)))
+		w.Write([]byte(renderMarkdown(*rev, vcs, prInfo, req)))
 	})
 
 	mux.HandleFunc("/quit", func(w http.ResponseWriter, r *http.Request) {
@@ -391,11 +476,16 @@ func main() {
 	url := fmt.Sprintf("http://%s", ln.Addr().String())
 	fmt.Println("gutter:", url)
 	fmt.Println("output:   ", outAbs)
-	displayRev := *rev
-	if displayRev == "" {
-		displayRev = "(working tree)"
+	if prInfo != nil {
+		fmt.Println("pr:       ", fmt.Sprintf("#%d", prInfo.Number), "("+prInfo.Repo+")")
+		fmt.Fprintln(os.Stderr, "note: showing the PR diff; the local working tree is NOT the PR's code")
+	} else {
+		displayRev := *rev
+		if displayRev == "" {
+			displayRev = "(working tree)"
+		}
+		fmt.Println("rev:      ", displayRev, "("+vcs+")")
 	}
-	fmt.Println("rev:      ", displayRev, "("+vcs+")")
 
 	if *open {
 		go openBrowser(url)
@@ -488,6 +578,31 @@ func gitUntrackedDiff() (string, map[string]bool, error) {
 	return b.String(), pathSet, nil
 }
 
+// githubPRDiff returns the unified git diff for a GitHub PR via the gh CLI.
+// arg is a PR number or a full PR URL (gh accepts either).
+func githubPRDiff(arg string) (string, error) {
+	cmd := exec.Command("gh", "pr", "diff", arg)
+	var out, errOut bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errOut
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("gh pr diff %s: %v: %s", arg, err, strings.TrimSpace(errOut.String()))
+	}
+	return out.String(), nil
+}
+
+// githubPRInfo fetches PR metadata via the gh CLI.
+func githubPRInfo(arg string) (PRInfo, error) {
+	cmd := exec.Command("gh", "pr", "view", arg, "--json", "number,headRefOid,baseRefOid,url")
+	var out, errOut bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errOut
+	if err := cmd.Run(); err != nil {
+		return PRInfo{}, fmt.Errorf("gh pr view %s: %v: %s", arg, err, strings.TrimSpace(errOut.String()))
+	}
+	return parsePRView(out.Bytes())
+}
+
 func parseDiff(s string) ([]File, error) {
 	var files []File
 	var cur *File
@@ -573,9 +688,23 @@ func parseHunkHeader(ln string) Hunk {
 	return h
 }
 
-func renderMarkdown(rev, vcs string, req SaveRequest) string {
+func renderMarkdown(rev, vcs string, pr *PRInfo, req SaveRequest) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Review of `%s` (%s)\n\n", rev, vcs)
+	if pr != nil {
+		fmt.Fprintf(&b, "# Review of PR #%d (github)\n\n", pr.Number)
+		fmt.Fprintf(&b, "## PR\n\n")
+		fmt.Fprintf(&b, "- repo: %s\n", pr.Repo)
+		fmt.Fprintf(&b, "- number: %d\n", pr.Number)
+		fmt.Fprintf(&b, "- head: %s\n", pr.Head)
+		fmt.Fprintf(&b, "- base: %s\n\n", pr.Base)
+		fmt.Fprintf(&b, "NOTE: This is a GitHub PR review. The local working tree is NOT the PR's code —\n")
+		fmt.Fprintf(&b, "do not read local files to understand the changes. Use `gh pr diff %d` (or\n", pr.Number)
+		fmt.Fprintf(&b, "`gh pr view %d`) to see the actual changes these comments refer to.\n", pr.Number)
+		fmt.Fprintf(&b, "To post a comment: `gh` review-comment API — use `head` as the commit id,\n")
+		fmt.Fprintf(&b, "`path`/`line` from each comment, side RIGHT for added/context, LEFT for removed.\n\n")
+	} else {
+		fmt.Fprintf(&b, "# Review of `%s` (%s)\n\n", rev, vcs)
+	}
 	if strings.TrimSpace(req.General) != "" {
 		b.WriteString("## General feedback\n\n")
 		b.WriteString(strings.TrimSpace(req.General))
@@ -587,6 +716,9 @@ func renderMarkdown(rev, vcs string, req SaveRequest) string {
 			loc := fmt.Sprintf("%s:%d", c.Path, c.Line)
 			if c.EndLine != 0 && c.EndLine != c.Line {
 				loc = fmt.Sprintf("%s:%d-%d", c.Path, c.Line, c.EndLine)
+			}
+			if pr != nil && c.Side == "old" {
+				loc += " (LEFT)"
 			}
 			fmt.Fprintf(&b, "### %s\n\n", loc)
 			if strings.TrimSpace(c.Snippet) != "" {
@@ -607,7 +739,7 @@ func renderMarkdown(rev, vcs string, req SaveRequest) string {
 	return b.String()
 }
 
-var inlineHeaderRe = regexp.MustCompile(`^###\s+(.+?):(\d+)(?:-(\d+))?\s*$`)
+var inlineHeaderRe = regexp.MustCompile(`^###\s+(.+?):(\d+)(?:-(\d+))?(?:\s+\((LEFT)\))?\s*$`)
 var tokenRe = regexp.MustCompile(`[A-Za-z_][A-Za-z_0-9]*|\s+|.`)
 
 func tokenize(s string) []string {
@@ -761,6 +893,9 @@ func loadPrior(path string) ([]Comment, string) {
 
 	for _, ln := range lines {
 		switch {
+		case strings.HasPrefix(ln, "## PR"):
+			// Forge metadata block (PR review); intentionally ignored on read.
+			continue
 		case strings.HasPrefix(ln, "## General feedback"):
 			flushCur()
 			section = "general"
@@ -786,7 +921,11 @@ func loadPrior(path string) ([]Comment, string) {
 				if m[3] != "" {
 					end, _ = strconv.Atoi(m[3])
 				}
-				cur = &Comment{Path: m[1], Side: "new", Line: start, EndLine: end}
+				side := "new"
+				if m[4] == "LEFT" {
+					side = "old"
+				}
+				cur = &Comment{Path: m[1], Side: side, Line: start, EndLine: end}
 				continue
 			}
 			if cur != nil {

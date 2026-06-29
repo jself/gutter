@@ -29,6 +29,7 @@ type Config struct {
 	Open     bool   `json:"open,omitempty"`
 	Editor   string `json:"editor,omitempty"`
 	Collapse int    `json:"collapse,omitempty"`
+	PR       string `json:"pr,omitempty"`
 }
 
 func defaultConfig() Config {
@@ -75,6 +76,9 @@ func loadConfig() Config {
 			c.Collapse = n
 		}
 	}
+	if v := os.Getenv("GUTTER_PR"); v != "" {
+		c.PR = v
+	}
 	return c
 }
 
@@ -108,6 +112,9 @@ func mergeConfigFile(c *Config, path string) {
 	}
 	if f.Collapse != 0 {
 		c.Collapse = f.Collapse
+	}
+	if f.PR != "" {
+		c.PR = f.PR
 	}
 }
 
@@ -240,8 +247,10 @@ func main() {
 		open      = flag.Bool("open", cfg.Open, "open browser")
 		editorCmd = flag.String("editor", cfg.Editor, "editor command template; {file} and {line} are substituted (e.g. \"code -g {file}:{line}\")")
 		collapse  = flag.Int("collapse", cfg.Collapse, "auto-collapse files with more than N changed lines (0 disables)")
+		prArg     = flag.String("pr", cfg.PR, "review a GitHub PR by number or URL (uses the gh CLI)")
 	)
 	flag.Parse()
+	_ = prArg
 
 	if *editorCmd == "" {
 		if _, err := exec.LookPath("code"); err == nil {

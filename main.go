@@ -474,7 +474,7 @@ func main() {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		md := renderMarkdown(*rev, vcs, prInfo, req)
+		md := renderMarkdown(*rev, vcs, "", prInfo, req)
 		if err := os.WriteFile(outAbs, []byte(md), 0644); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -496,7 +496,7 @@ func main() {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		md := renderMarkdown(*rev, vcs, prInfo, req)
+		md := renderMarkdown(*rev, vcs, "", prInfo, req)
 		select {
 		case submitCh <- md:
 		default: // already submitted; first one wins
@@ -515,7 +515,7 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		w.Write([]byte(renderMarkdown(*rev, vcs, prInfo, req)))
+		w.Write([]byte(renderMarkdown(*rev, vcs, "", prInfo, req)))
 	})
 
 	mux.HandleFunc("/quit", func(w http.ResponseWriter, r *http.Request) {
@@ -864,9 +864,11 @@ func parseHunkHeader(ln string) Hunk {
 	return h
 }
 
-func renderMarkdown(rev, vcs string, pr *PRInfo, req SaveRequest) string {
+func renderMarkdown(rev, vcs, docPath string, pr *PRInfo, req SaveRequest) string {
 	var b strings.Builder
-	if pr != nil {
+	if docPath != "" {
+		fmt.Fprintf(&b, "# Review of %s\n\n", docPath)
+	} else if pr != nil {
 		fmt.Fprintf(&b, "# Review of PR #%d (github)\n\n", pr.Number)
 		fmt.Fprintf(&b, "## PR\n\n")
 		fmt.Fprintf(&b, "- repo: %s\n", pr.Repo)

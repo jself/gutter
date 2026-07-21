@@ -140,13 +140,17 @@
   <button class="secondary" id="sidebarToggle" title="Toggle file list" style="padding: 4px 10px;">☰</button>
   <div>rev <span class="rev">{{.Rev}}</span> ({{.VCS}})</div>
   <div class="viewing">Viewing: <span id="viewing">All files</span></div>
-  <div class="out">→ {{.Out}}</div>
+  {{if not .Sync}}<div class="out">→ {{.Out}}</div>{{end}}
   <div class="spacer"></div>
   <span id="status" class="status"></span>
   <button class="secondary" id="themeToggle" title="Toggle light/dark" style="padding: 4px 10px;">🌙</button>
+  {{if .Sync}}
+  <button id="submitBtn" onclick="submit_review()">Submit</button>
+  {{else}}
   <button class="secondary" id="copyBtn" title="Copy review markdown to clipboard">Copy</button>
   <button class="secondary" onclick="quit()">Quit</button>
   <button onclick="save()">Save review</button>
+  {{end}}
 </header>
 <div class="layout">
 <aside class="sidebar">
@@ -184,6 +188,7 @@ let nextId = 1;
 let dragStart = null; // {fileIdx, hunkIdx, lineIdx}
 const HAS_EDITOR = {{if .HasEditor}}true{{else}}false{{end}};
 const COLLAPSE_THRESHOLD = {{.Collapse}}; // total +/- lines, 0 = never
+const SYNC = {{if .Sync}}true{{else}}false{{end}};
 let activeFileFilter = null; // path or null
 let textFilter = '';
 
@@ -423,7 +428,8 @@ document.getElementById('themeToggle').addEventListener('click', () => {
   try { localStorage.setItem('gutter_theme', next); } catch (e) {}
 });
 
-document.getElementById('copyBtn').addEventListener('click', async () => {
+const copyBtnEl = document.getElementById('copyBtn');
+if (copyBtnEl) copyBtnEl.addEventListener('click', async () => {
   const status = document.getElementById('status');
   status.className = 'status';
   status.textContent = 'copying…';
@@ -667,6 +673,31 @@ async function save() {
     if (r.ok) {
       status.className = 'status ok';
       status.textContent = t.trim();
+    } else {
+      status.className = 'status err';
+      status.textContent = 'error: ' + t;
+    }
+  } catch (e) {
+    status.className = 'status err';
+    status.textContent = 'error: ' + e.message;
+  }
+}
+
+async function submit_review() {
+  const submitBtn = document.getElementById('submitBtn');
+  if (submitBtn) submitBtn.disabled = true;
+  const status = document.getElementById('status');
+  status.className = 'status';
+  status.textContent = 'submitting…';
+  const body = {
+    general: document.getElementById('general').value,
+    comments: COMMENTS.map(({id, ...rest}) => rest),
+  };
+  try {
+    const r = await fetch('/submit', { method: 'POST', body: JSON.stringify(body) });
+    const t = await r.text();
+    if (r.ok) {
+      document.body.innerHTML = '<main><p style="padding:20px;color:var(--muted)">' + escapeHtml(t.trim()) + '</p></main>';
     } else {
       status.className = 'status err';
       status.textContent = 'error: ' + t;

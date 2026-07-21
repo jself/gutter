@@ -30,6 +30,7 @@ type Config struct {
 	Editor   string `json:"editor,omitempty"`
 	Collapse int    `json:"collapse,omitempty"`
 	PR       string `json:"pr,omitempty"`
+	Sync     bool   `json:"sync,omitempty"`
 }
 
 func defaultConfig() Config {
@@ -79,6 +80,9 @@ func loadConfig() Config {
 	if v := os.Getenv("GUTTER_PR"); v != "" {
 		c.PR = v
 	}
+	if v := os.Getenv("GUTTER_SYNC"); v != "" {
+		c.Sync = v != "0" && v != "false" && v != "no"
+	}
 	return c
 }
 
@@ -115,6 +119,9 @@ func mergeConfigFile(c *Config, path string) {
 	}
 	if f.PR != "" {
 		c.PR = f.PR
+	}
+	if f.Sync {
+		c.Sync = true
 	}
 }
 
@@ -254,6 +261,7 @@ func main() {
 		editorCmd = flag.String("editor", cfg.Editor, "editor command template; {file} and {line} are substituted (e.g. \"code -g {file}:{line}\")")
 		collapse  = flag.Int("collapse", cfg.Collapse, "auto-collapse files with more than N changed lines (0 disables)")
 		prArg     = flag.String("pr", cfg.PR, "review a GitHub PR by number or URL (uses the gh CLI)")
+		sync      = flag.Bool("sync", cfg.Sync, "one-shot review: block until Submit, print the review to stdout, then exit (no review.md written)")
 	)
 	flag.Parse()
 
@@ -378,6 +386,7 @@ func main() {
 			"Out":       outAbs,
 			"HasEditor": *editorCmd != "",
 			"Collapse":  *collapse,
+			"Sync":      *sync,
 		})
 	})
 
@@ -424,8 +433,13 @@ func main() {
 	})
 
 	doneCh := make(chan struct{}, 1)
+	submitCh := make(chan string, 1)
 
 	mux.HandleFunc("/save", func(w http.ResponseWriter, r *http.Request) {
+		if *sync {
+			http.Error(w, "disabled in sync mode; use Submit", 404)
+			return
+		}
 		if r.Method != "POST" {
 			http.Error(w, "POST only", 405)
 			return
@@ -447,6 +461,24 @@ func main() {
 		}
 	})
 
+	mux.HandleFunc("/submit", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "POST only", 405)
+			return
+		}
+		var req SaveRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		md := renderMarkdown(*rev, vcs, prInfo, req)
+		select {
+		case submitCh <- md:
+		default: // already submitted; first one wins
+		}
+		w.Write([]byte("Review submitted — you can close this tab"))
+	})
+
 	mux.HandleFunc("/markdown", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, "POST only", 405)
@@ -462,6 +494,10 @@ func main() {
 	})
 
 	mux.HandleFunc("/quit", func(w http.ResponseWriter, r *http.Request) {
+		if *sync {
+			http.Error(w, "disabled in sync mode; use Submit", 404)
+			return
+		}
 		w.Write([]byte("bye"))
 		go func() {
 			time.Sleep(200 * time.Millisecond)
@@ -474,26 +510,44 @@ func main() {
 		die("listen: %v", err)
 	}
 	url := fmt.Sprintf("http://%s", ln.Addr().String())
-	fmt.Println("gutter:", url)
-	fmt.Println("output:   ", outAbs)
+	// The startup banner is diagnostic, not program output, so it always goes
+	// to stderr. This keeps stdout clean in every mode — reserved for the
+	// rendered review in sync mode, and empty otherwise.
+	infoW := os.Stderr
+	fmt.Fprintln(infoW, "gutter:", url)
+	if !*sync {
+		fmt.Fprintln(infoW, "output:   ", outAbs)
+	}
 	if prInfo != nil {
-		fmt.Println("pr:       ", fmt.Sprintf("#%d", prInfo.Number), "("+prInfo.Repo+")")
+		fmt.Fprintln(infoW, "pr:       ", fmt.Sprintf("#%d", prInfo.Number), "("+prInfo.Repo+")")
 		fmt.Fprintln(os.Stderr, "note: showing the PR diff; the local working tree is NOT the PR's code")
 	} else {
 		displayRev := *rev
 		if displayRev == "" {
 			displayRev = "(working tree)"
 		}
-		fmt.Println("rev:      ", displayRev, "("+vcs+")")
+		fmt.Fprintln(infoW, "rev:      ", displayRev, "("+vcs+")")
+	}
+	if *sync {
+		fmt.Fprintln(infoW, "sync:      waiting for Submit (no review.md will be written)")
 	}
 
 	if *open {
 		go openBrowser(url)
 	}
 
-	go func() {
-		<-doneCh
-	}()
+	if *sync {
+		go func() {
+			md := <-submitCh
+			time.Sleep(150 * time.Millisecond) // let the HTTP response flush to the browser
+			fmt.Print(md)
+			os.Exit(0)
+		}()
+	} else {
+		go func() {
+			<-doneCh
+		}()
+	}
 
 	srv := &http.Server{Handler: mux}
 	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {

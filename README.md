@@ -79,6 +79,7 @@ that have been addressed, add new ones, and save again.
 |---|---|---|
 | `-r <revset>` | `@` (jj) / working tree (git) | What to diff. jj: a revset, e.g. `main..@`. git: a rev, e.g. `HEAD~3`, or empty for unstaged changes. |
 | `-pr <number\|url>` | — | Review a GitHub PR instead of a local diff. See [Reviewing a GitHub PR](#reviewing-a-github-pr). |
+| `-sync` | `false` | One-shot mode for agents: block until Submit, print the review to stdout, write no file. See [Agent sync mode](#agent-sync-mode). |
 | `-o <path>` | `review.md` | Output file for the markdown review. |
 | `-port <n>` | random | HTTP port to listen on. |
 | `-open=false` | `true` | Don't auto-launch the browser. |
@@ -99,6 +100,7 @@ config (`$XDG_CONFIG_HOME/gutter/config.json`, falling back to
 |---|---|
 | `GUTTER_REV` | `-r` |
 | `GUTTER_PR` | `-pr` |
+| `GUTTER_SYNC` | `-sync` (`true` / `false`) |
 | `GUTTER_OUTPUT` | `-o` |
 | `GUTTER_DIR` | `-dir` |
 | `GUTTER_PORT` | `-port` |
@@ -113,6 +115,7 @@ config (`$XDG_CONFIG_HOME/gutter/config.json`, falling back to
 {
   "rev": "@{u}",
   "pr": "",
+  "sync": false,
   "dir": ".claude",
   "output": "review.md",
   "editor": "nvim --server /tmp/nvim.sock --remote-send ':e {file}<CR>:{line}<CR>'",
@@ -188,6 +191,31 @@ panel at the top so you don't lose them.
 - A 💬 marker on a line number means you've already commented on that line.
 
 ## Workflow notes
+
+### Agent sync mode
+
+`gutter -sync` is a one-shot mode for an agent that runs `gutter` itself and
+waits for the review as its command output — no browser-driven human loop
+required on the agent's side.
+
+```
+gutter -sync
+```
+
+Behavior:
+
+- Serves the UI as normal and blocks until you click the single **Submit**
+  button (there's no Save/Copy in this mode).
+- On Submit, prints the review markdown to **stdout** and exits `0`.
+  **`review.md` is not written** — the caller is expected to capture stdout.
+- All startup/informational logging (the `gutter:`/`rev:`/`pr:`/`sync:`
+  banner lines) goes to **stderr**, so stdout contains only the review
+  markdown — safe to pipe or capture directly.
+- An empty review is allowed: submitting with no comments prints the
+  `_(no feedback)_` placeholder and still exits `0`.
+- Pressing Ctrl-C before Submit exits non-zero with nothing on stdout — this
+  is how an agent distinguishes "user declined to review" from "user
+  submitted an empty review".
 
 ### Reviewing a GitHub PR
 

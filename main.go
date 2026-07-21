@@ -310,19 +310,18 @@ func main() {
 		// For git, leave rev empty to diff the working tree against HEAD.
 	}
 
+	docPath := *md
 	var prInfo *PRInfo
 	if *prArg != "" {
-		info, err := githubPRInfo(*prArg)
-		if err != nil {
-			die("%v", err)
+		if docPath != "" {
+			fmt.Fprintln(os.Stderr, "note: -md set; ignoring -pr")
+		} else {
+			info, err := githubPRInfo(*prArg)
+			if err != nil {
+				die("%v", err)
+			}
+			prInfo = &info
 		}
-		prInfo = &info
-	}
-
-	docPath := *md
-	if docPath != "" && prInfo != nil {
-		fmt.Fprintln(os.Stderr, "note: -md set; ignoring -pr")
-		prInfo = nil
 	}
 
 	outPath := *output
@@ -393,7 +392,7 @@ func main() {
 	if err != nil {
 		die("%v", err)
 	}
-	if len(data.Files) == 0 {
+	if docPath == "" && len(data.Files) == 0 {
 		fmt.Fprintln(os.Stderr, "No changes found yet — server will stay up, reload to check again")
 	}
 	if len(data.Prior) > 0 || data.PriorGen != "" {
@@ -616,6 +615,7 @@ var mdRenderer = goldmark.New()
 // renderDoc parses a markdown file and returns its top-level blocks, each with
 // its rendered HTML fragment and 1-based source line range.
 func renderDoc(path string) (Doc, error) {
+	// No size cap: -md points at a local file the user chose to review.
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return Doc{}, err
@@ -636,7 +636,7 @@ func renderDoc(path string) (Doc, error) {
 			if end < len(lineStarts) {
 				e = lineStarts[end] // start of the line after `end`
 			}
-			source = strings.TrimRight(string(src[s:e]), "\n")
+			source = strings.TrimRight(string(src[s:e]), "\r\n")
 		}
 		blocks = append(blocks, DocBlock{
 			HTML:      buf.String(),

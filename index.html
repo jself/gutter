@@ -475,7 +475,8 @@ function renderDocView() {
     el.innerHTML = b.html;
     el.addEventListener('click', (e) => {
       if (e.target.closest('a')) return;
-      if (String(window.getSelection())) return; // don't hijack text selection
+      const sel = window.getSelection();
+      if (sel && sel.toString().trim() && el.contains(sel.anchorNode)) return; // don't hijack in-block text selection
       openDocCommentForm(bi);
     });
     wrap.appendChild(el);

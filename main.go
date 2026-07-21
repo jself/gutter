@@ -264,7 +264,6 @@ func main() {
 		sync      = flag.Bool("sync", cfg.Sync, "one-shot review: block until Submit, print the review to stdout, then exit (no review.md written)")
 	)
 	flag.Parse()
-	_ = sync // used by Task 2
 
 	if *editorCmd == "" {
 		if _, err := exec.LookPath("code"); err == nil {
@@ -387,6 +386,7 @@ func main() {
 			"Out":       outAbs,
 			"HasEditor": *editorCmd != "",
 			"Collapse":  *collapse,
+			"Sync":      *sync,
 		})
 	})
 
@@ -433,6 +433,7 @@ func main() {
 	})
 
 	doneCh := make(chan struct{}, 1)
+	submitCh := make(chan string, 1)
 
 	mux.HandleFunc("/save", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
@@ -454,6 +455,24 @@ func main() {
 		case doneCh <- struct{}{}:
 		default:
 		}
+	})
+
+	mux.HandleFunc("/submit", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "POST only", 405)
+			return
+		}
+		var req SaveRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		md := renderMarkdown(*rev, vcs, prInfo, req)
+		select {
+		case submitCh <- md:
+		default: // already submitted; first one wins
+		}
+		w.Write([]byte("Review submitted — you can close this tab"))
 	})
 
 	mux.HandleFunc("/markdown", func(w http.ResponseWriter, r *http.Request) {
@@ -483,26 +502,46 @@ func main() {
 		die("listen: %v", err)
 	}
 	url := fmt.Sprintf("http://%s", ln.Addr().String())
-	fmt.Println("gutter:", url)
-	fmt.Println("output:   ", outAbs)
+	// In sync mode, stdout is reserved for the rendered review; send all
+	// informational banner output to stderr instead.
+	infoW := os.Stdout
+	if *sync {
+		infoW = os.Stderr
+	}
+	fmt.Fprintln(infoW, "gutter:", url)
+	if !*sync {
+		fmt.Fprintln(infoW, "output:   ", outAbs)
+	}
 	if prInfo != nil {
-		fmt.Println("pr:       ", fmt.Sprintf("#%d", prInfo.Number), "("+prInfo.Repo+")")
+		fmt.Fprintln(infoW, "pr:       ", fmt.Sprintf("#%d", prInfo.Number), "("+prInfo.Repo+")")
 		fmt.Fprintln(os.Stderr, "note: showing the PR diff; the local working tree is NOT the PR's code")
 	} else {
 		displayRev := *rev
 		if displayRev == "" {
 			displayRev = "(working tree)"
 		}
-		fmt.Println("rev:      ", displayRev, "("+vcs+")")
+		fmt.Fprintln(infoW, "rev:      ", displayRev, "("+vcs+")")
+	}
+	if *sync {
+		fmt.Fprintln(infoW, "sync:      waiting for Submit (no review.md will be written)")
 	}
 
 	if *open {
 		go openBrowser(url)
 	}
 
-	go func() {
-		<-doneCh
-	}()
+	if *sync {
+		go func() {
+			md := <-submitCh
+			time.Sleep(150 * time.Millisecond) // let the HTTP response flush to the browser
+			fmt.Print(md)
+			os.Exit(0)
+		}()
+	} else {
+		go func() {
+			<-doneCh
+		}()
+	}
 
 	srv := &http.Server{Handler: mux}
 	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {

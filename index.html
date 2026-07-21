@@ -207,8 +207,11 @@ const SYNC = {{if .Sync}}true{{else}}false{{end}};
 const SEVERITY_MODE = {{if .Severity}}true{{else}}false{{end}};
 const SEVERITIES = ['BLOCKING', 'IMPORTANT', 'SUGGESTION', 'QUESTION', 'NITPICK'];
 function severityOptionsHTML(selected) {
-  const sel = SEVERITIES.includes(selected) ? selected : 'QUESTION';
-  return SEVERITIES.map(s => `<option value="${s}"${s === sel ? ' selected' : ''}>${s}</option>`).join('');
+  // Preserve an unrecognized severity (e.g. a future/hand-written token) as an
+  // extra option so editing an unrelated field doesn't silently drop it.
+  const opts = selected && !SEVERITIES.includes(selected) ? [selected, ...SEVERITIES] : SEVERITIES;
+  const sel = opts.includes(selected) ? selected : 'QUESTION';
+  return opts.map(s => `<option value="${escapeHtml(s)}"${s === sel ? ' selected' : ''}>${escapeHtml(s)}</option>`).join('');
 }
 function severitySelectHTML() {
   return SEVERITY_MODE ? `<select class="severity">${severityOptionsHTML('QUESTION')}</select>` : '';

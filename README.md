@@ -311,7 +311,10 @@ token on inline-comment headings:
 
 With the flag off, output is unchanged from before. Headings without the
 token still parse fine (as `QUESTION`), so older `review.md` files and
-diffs stay compatible either way.
+diffs stay compatible either way. Note the corollary: re-saving with the
+flag off writes headings *without* tokens, so severities recorded on an
+earlier `-severity` run are dropped from `review.md` on the next save — keep
+`-severity` on whenever you want them preserved.
 
 This is aimed at tooling that consumes `gutter -sync` output and wants to
 triage by severity — e.g. a centaur-review pipeline that only auto-applies

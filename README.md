@@ -88,6 +88,7 @@ that have been addressed, add new ones, and save again.
 | `-dir <path>` | `.` | Directory for the output file. Combine with `-o` to put reviews in e.g. `.claude/`. |
 | `-collapse <n>` | `80` | Auto-collapse files with more than N changed lines. `0` disables. |
 | `-editor "<tmpl>"` | auto-detected | Editor command template — see below. |
+| `-severity` | `false` | Show a severity dropdown on inline comments and emit a trailing `[SEVERITY]` token on inline headings. See [Comment severity](#comment-severity). |
 
 ## Configuration
 
@@ -110,6 +111,7 @@ config (`$XDG_CONFIG_HOME/gutter/config.json`, falling back to
 | `GUTTER_OPEN` | `-open` (`true` / `false`) |
 | `GUTTER_EDITOR` | `-editor` |
 | `GUTTER_COLLAPSE` | `-collapse` |
+| `GUTTER_SEVERITY` | `-severity` (`true` / `false`) |
 
 ### Config file
 
@@ -124,7 +126,8 @@ config (`$XDG_CONFIG_HOME/gutter/config.json`, falling back to
   "output": "review.md",
   "editor": "nvim --server /tmp/nvim.sock --remote-send ':e {file}<CR>:{line}<CR>'",
   "collapse": 120,
-  "open": true
+  "open": true,
+  "severity": false
 }
 ```
 
@@ -267,6 +270,8 @@ gutter's only Go dependency) as a formatted document instead of a diff.
 gutter -md docs/plan.md
 ```
 
+![gutter -md: reviewing a markdown document](docs/screenshot-md.png)
+
 Click any rendered block (paragraph, heading, list item, code fence, etc.) to
 leave a comment on it. Block comments anchor to the block's source line range
 in the markdown file, so `review.md` keeps the usual `### file:line-end`
@@ -290,6 +295,30 @@ Notes:
 - `-md` ignores `-r` — there's no revset to diff in document mode.
 - Non-sync doc mode writes `review.md` titled `# Review of <path>` instead of
   the usual `# Review of <revset>`.
+
+### Comment severity
+
+`-severity` (off by default) adds a severity dropdown — `BLOCKING`,
+`IMPORTANT`, `SUGGESTION`, `QUESTION`, `NITPICK` (default `QUESTION`) — to
+each inline comment. When it's on, `review.md` gains a trailing `[SEVERITY]`
+token on inline-comment headings:
+
+```
+### src/app.ts:53 [SUGGESTION]
+
+### src/app.ts:120-124 [BLOCKING]
+```
+
+With the flag off, output is unchanged from before. Headings without the
+token still parse fine (as `QUESTION`), so older `review.md` files and
+diffs stay compatible either way. Note the corollary: re-saving with the
+flag off writes headings *without* tokens, so severities recorded on an
+earlier `-severity` run are dropped from `review.md` on the next save — keep
+`-severity` on whenever you want them preserved.
+
+This is aimed at tooling that consumes `gutter -sync` output and wants to
+triage by severity — e.g. a centaur-review pipeline that only auto-applies
+`NITPICK`/`SUGGESTION` comments but stops for human input on `BLOCKING` ones.
 
 ### Revset examples
 

@@ -632,8 +632,10 @@ func main() {
 		go serve() // HTTP server runs in the background; the window owns the main thread
 		if err := openWindow(url, "gutter"); err != nil {
 			// No window support (portable build): warn and behave like a normal
-			// server run — open the browser and keep serving.
+			// server run — open the browser and keep serving. This opens the
+			// browser even if -open=false was set, since -window has no other UI.
 			fmt.Fprintln(os.Stderr, "gutter: window unavailable:", err)
+			fmt.Fprintln(os.Stderr, "gutter: falling back to the browser (opening despite -open=false, if set)")
 			go openBrowser(url)
 			select {} // block forever; the server goroutine keeps handling requests
 		}

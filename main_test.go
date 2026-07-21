@@ -370,6 +370,17 @@ func TestLoadConfigWindowEnv(t *testing.T) {
 	}
 }
 
+func TestOpenWindowStub(t *testing.T) {
+	// The default (no-tag) test build compiles window_stub.go.
+	err := openWindow("http://127.0.0.1:0", "gutter")
+	if err == nil {
+		t.Fatal("stub openWindow should return an error")
+	}
+	if !strings.Contains(err.Error(), "without window support") {
+		t.Errorf("unexpected stub error: %v", err)
+	}
+}
+
 func TestMergeConfigFileWindowOR(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "c.json")

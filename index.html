@@ -684,6 +684,8 @@ async function save() {
 }
 
 async function submit_review() {
+  const submitBtn = document.getElementById('submitBtn');
+  if (submitBtn) submitBtn.disabled = true;
   const status = document.getElementById('status');
   status.className = 'status';
   status.textContent = 'submitting…';

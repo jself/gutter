@@ -436,6 +436,10 @@ func main() {
 	submitCh := make(chan string, 1)
 
 	mux.HandleFunc("/save", func(w http.ResponseWriter, r *http.Request) {
+		if *sync {
+			http.Error(w, "disabled in sync mode; use Submit", 404)
+			return
+		}
 		if r.Method != "POST" {
 			http.Error(w, "POST only", 405)
 			return
@@ -490,6 +494,10 @@ func main() {
 	})
 
 	mux.HandleFunc("/quit", func(w http.ResponseWriter, r *http.Request) {
+		if *sync {
+			http.Error(w, "disabled in sync mode; use Submit", 404)
+			return
+		}
 		w.Write([]byte("bye"))
 		go func() {
 			time.Sleep(200 * time.Millisecond)

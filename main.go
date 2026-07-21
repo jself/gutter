@@ -36,6 +36,7 @@ type Config struct {
 	PR       string `json:"pr,omitempty"`
 	Sync     bool   `json:"sync,omitempty"`
 	MD       string `json:"md,omitempty"`
+	Severity bool   `json:"severity,omitempty"`
 }
 
 func defaultConfig() Config {
@@ -91,6 +92,9 @@ func loadConfig() Config {
 	if v := os.Getenv("GUTTER_MD"); v != "" {
 		c.MD = v
 	}
+	if v := os.Getenv("GUTTER_SEVERITY"); v != "" {
+		c.Severity = v != "0" && v != "false" && v != "no"
+	}
 	return c
 }
 
@@ -133,6 +137,9 @@ func mergeConfigFile(c *Config, path string) {
 	}
 	if f.MD != "" {
 		c.MD = f.MD
+	}
+	if f.Severity {
+		c.Severity = true
 	}
 }
 
@@ -288,6 +295,7 @@ func main() {
 		prArg     = flag.String("pr", cfg.PR, "review a GitHub PR by number or URL (uses the gh CLI)")
 		sync      = flag.Bool("sync", cfg.Sync, "one-shot review: block until Submit, print the review to stdout, then exit (no review.md written)")
 		md        = flag.String("md", cfg.MD, "review a markdown file as a rendered document (compose with -sync)")
+		severity  = flag.Bool("severity", cfg.Severity, "show a severity dropdown on comments and emit a [SEVERITY] token on inline headings")
 	)
 	flag.Parse()
 
@@ -436,6 +444,7 @@ func main() {
 			"Collapse":  *collapse,
 			"Sync":      *sync,
 			"Doc":       docPath != "",
+			"Severity":  *severity,
 		})
 	})
 
@@ -498,7 +507,7 @@ func main() {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		md := renderMarkdown(*rev, vcs, docPath, prInfo, req)
+		md := renderMarkdown(*rev, vcs, docPath, *severity, prInfo, req)
 		if err := os.WriteFile(outAbs, []byte(md), 0644); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -520,7 +529,7 @@ func main() {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		md := renderMarkdown(*rev, vcs, docPath, prInfo, req)
+		md := renderMarkdown(*rev, vcs, docPath, *severity, prInfo, req)
 		select {
 		case submitCh <- md:
 		default: // already submitted; first one wins
@@ -539,7 +548,7 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		w.Write([]byte(renderMarkdown(*rev, vcs, docPath, prInfo, req)))
+		w.Write([]byte(renderMarkdown(*rev, vcs, docPath, *severity, prInfo, req)))
 	})
 
 	mux.HandleFunc("/quit", func(w http.ResponseWriter, r *http.Request) {
@@ -892,7 +901,7 @@ func parseHunkHeader(ln string) Hunk {
 	return h
 }
 
-func renderMarkdown(rev, vcs, docPath string, pr *PRInfo, req SaveRequest) string {
+func renderMarkdown(rev, vcs, docPath string, severity bool, pr *PRInfo, req SaveRequest) string {
 	var b strings.Builder
 	if docPath != "" {
 		fmt.Fprintf(&b, "# Review of %s\n\n", docPath)
@@ -926,11 +935,13 @@ func renderMarkdown(rev, vcs, docPath string, pr *PRInfo, req SaveRequest) strin
 			if pr != nil && c.Side == "old" {
 				loc += " (LEFT)"
 			}
-			sev := c.Severity
-			if sev == "" {
-				sev = "QUESTION"
+			if severity {
+				sev := c.Severity
+				if sev == "" {
+					sev = "QUESTION"
+				}
+				loc += " [" + sev + "]"
 			}
-			loc += " [" + sev + "]"
 			fmt.Fprintf(&b, "### %s\n\n", loc)
 			if strings.TrimSpace(c.Snippet) != "" {
 				b.WriteString("```\n")

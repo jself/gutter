@@ -45,7 +45,7 @@ func TestRenderMarkdownPRBlock(t *testing.T) {
 			{Path: "b.go", Side: "old", Line: 5, Body: "old-side note"},
 		},
 	}
-	md := renderMarkdown("", "git", "", pr, req)
+	md := renderMarkdown("", "git", "", false, pr, req)
 
 	for _, want := range []string{
 		"# Review of PR #123 (github)",
@@ -56,8 +56,8 @@ func TestRenderMarkdownPRBlock(t *testing.T) {
 		"- base: def456",
 		"local working tree is NOT the PR's code",
 		"gh pr diff 123",
-		"### a.go:10 [QUESTION]\n",       // new side: no LEFT suffix
-		"### b.go:5 (LEFT) [QUESTION]\n", // old side: LEFT suffix
+		"### a.go:10\n",       // new side: no LEFT suffix
+		"### b.go:5 (LEFT)\n", // old side: LEFT suffix
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("rendered markdown missing %q\n---\n%s", want, md)
@@ -74,7 +74,7 @@ func TestLoadPriorRoundTripSide(t *testing.T) {
 		{Path: "a.go", Side: "new", Line: 10, Body: "new note"},
 		{Path: "b.go", Side: "old", Line: 5, Body: "old note"},
 	}}
-	if err := os.WriteFile(path, []byte(renderMarkdown("", "git", "", pr, req)), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(renderMarkdown("", "git", "", false, pr, req)), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -105,21 +105,21 @@ func TestLoadPriorLegacyNoSuffix(t *testing.T) {
 
 func TestRenderMarkdownLocalUnchanged(t *testing.T) {
 	req := SaveRequest{Comments: []Comment{{Path: "a.go", Side: "new", Line: 10, Body: "x"}}}
-	md := renderMarkdown("@", "jj", "", nil, req)
+	md := renderMarkdown("@", "jj", "", false, nil, req)
 	if strings.Contains(md, "## PR") {
 		t.Errorf("local review should not contain a PR block:\n%s", md)
 	}
 	if !strings.Contains(md, "# Review of `@` (jj)") {
 		t.Errorf("local title changed:\n%s", md)
 	}
-	if !strings.Contains(md, "### a.go:10 [QUESTION]\n") {
+	if !strings.Contains(md, "### a.go:10\n") {
 		t.Errorf("new-side anchor should have no LEFT suffix:\n%s", md)
 	}
 }
 
 func TestRenderMarkdownLocalOldSideNoSuffix(t *testing.T) {
 	req := SaveRequest{Comments: []Comment{{Path: "a.go", Side: "old", Line: 3, Body: "del note"}}}
-	md := renderMarkdown("@", "jj", "", nil, req)
+	md := renderMarkdown("@", "jj", "", false, nil, req)
 	if strings.Contains(md, "(LEFT)") {
 		t.Errorf("local review should not emit LEFT suffix:\n%s", md)
 	}
@@ -127,7 +127,7 @@ func TestRenderMarkdownLocalOldSideNoSuffix(t *testing.T) {
 
 func TestRenderMarkdownDocTitle(t *testing.T) {
 	req := SaveRequest{Comments: []Comment{{Path: "plan.md", Side: "new", Line: 5, Body: "note"}}}
-	md := renderMarkdown("", "git", "docs/plan.md", nil, req)
+	md := renderMarkdown("", "git", "docs/plan.md", false, nil, req)
 	if !strings.Contains(md, "# Review of docs/plan.md\n") {
 		t.Errorf("doc title missing:\n%s", md)
 	}
@@ -135,7 +135,7 @@ func TestRenderMarkdownDocTitle(t *testing.T) {
 		t.Errorf("doc title should not include vcs:\n%s", md)
 	}
 	// Non-doc path unchanged
-	md2 := renderMarkdown("@", "jj", "", nil, req)
+	md2 := renderMarkdown("@", "jj", "", false, nil, req)
 	if !strings.Contains(md2, "# Review of `@` (jj)") {
 		t.Errorf("non-doc title changed:\n%s", md2)
 	}
@@ -156,7 +156,7 @@ func TestLoadPriorIgnoresPRBlock(t *testing.T) {
 		General:  "overall note",
 		Comments: []Comment{{Path: "c.go", Side: "new", Line: 7, Body: "inline note"}},
 	}
-	if err := os.WriteFile(path, []byte(renderMarkdown("", "git", "", pr, req)), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(renderMarkdown("", "git", "", false, pr, req)), 0644); err != nil {
 		t.Fatal(err)
 	}
 	got, gen := loadPrior(path)
@@ -287,7 +287,7 @@ func TestRenderMarkdownSeverity(t *testing.T) {
 		{Path: "b.go", Side: "new", Line: 8, Body: "y"}, // empty -> QUESTION
 		{Path: "c.go", Side: "new", Line: 10, EndLine: 12, Severity: "SUGGESTION", Body: "z"},
 	}}
-	md := renderMarkdown("", "git", "", nil, req)
+	md := renderMarkdown("", "git", "", true, nil, req)
 	for _, want := range []string{
 		"### a.go:5 [IMPORTANT]\n",
 		"### b.go:8 [QUESTION]\n",
@@ -302,9 +302,20 @@ func TestRenderMarkdownSeverity(t *testing.T) {
 func TestRenderMarkdownSeverityAfterLeft(t *testing.T) {
 	pr := &PRInfo{Repo: "o/r", Number: 1, Head: "h", Base: "b"}
 	req := SaveRequest{Comments: []Comment{{Path: "c.go", Side: "old", Line: 7, Severity: "NITPICK", Body: "z"}}}
-	md := renderMarkdown("", "git", "", pr, req)
+	md := renderMarkdown("", "git", "", true, pr, req)
 	if !strings.Contains(md, "### c.go:7 (LEFT) [NITPICK]\n") {
 		t.Errorf("severity should follow (LEFT):\n%s", md)
+	}
+}
+
+func TestRenderMarkdownSeverityOff(t *testing.T) {
+	req := SaveRequest{Comments: []Comment{{Path: "a.go", Side: "new", Line: 5, Severity: "IMPORTANT", Body: "x"}}}
+	md := renderMarkdown("", "git", "", false, nil, req)
+	if !strings.Contains(md, "### a.go:5\n") {
+		t.Errorf("flag off must emit a bare heading:\n%s", md)
+	}
+	if strings.Contains(md, "[") {
+		t.Errorf("flag off must not emit any [SEVERITY] token:\n%s", md)
 	}
 }
 
@@ -312,7 +323,7 @@ func TestLoadPriorSeverityRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "review.md")
 	req := SaveRequest{Comments: []Comment{{Path: "a.go", Side: "new", Line: 5, Severity: "SUGGESTION", Body: "s"}}}
-	if err := os.WriteFile(path, []byte(renderMarkdown("", "git", "", nil, req)), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(renderMarkdown("", "git", "", true, nil, req)), 0644); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := loadPrior(path)

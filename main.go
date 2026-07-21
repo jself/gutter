@@ -35,6 +35,7 @@ type Config struct {
 	Collapse int    `json:"collapse,omitempty"`
 	PR       string `json:"pr,omitempty"`
 	Sync     bool   `json:"sync,omitempty"`
+	MD       string `json:"md,omitempty"`
 }
 
 func defaultConfig() Config {
@@ -87,6 +88,9 @@ func loadConfig() Config {
 	if v := os.Getenv("GUTTER_SYNC"); v != "" {
 		c.Sync = v != "0" && v != "false" && v != "no"
 	}
+	if v := os.Getenv("GUTTER_MD"); v != "" {
+		c.MD = v
+	}
 	return c
 }
 
@@ -126,6 +130,9 @@ func mergeConfigFile(c *Config, path string) {
 	}
 	if f.Sync {
 		c.Sync = true
+	}
+	if f.MD != "" {
+		c.MD = f.MD
 	}
 }
 
@@ -278,8 +285,10 @@ func main() {
 		collapse  = flag.Int("collapse", cfg.Collapse, "auto-collapse files with more than N changed lines (0 disables)")
 		prArg     = flag.String("pr", cfg.PR, "review a GitHub PR by number or URL (uses the gh CLI)")
 		sync      = flag.Bool("sync", cfg.Sync, "one-shot review: block until Submit, print the review to stdout, then exit (no review.md written)")
+		md        = flag.String("md", cfg.MD, "review a markdown file as a rendered document (compose with -sync)")
 	)
 	flag.Parse()
+	_ = md
 
 	if *editorCmd == "" {
 		if _, err := exec.LookPath("code"); err == nil {

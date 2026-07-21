@@ -190,6 +190,27 @@ func TestLoadConfigSyncEnv(t *testing.T) {
 	}
 }
 
+func TestLoadConfigMDEnv(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("GUTTER_MD", "plan.md")
+	if got := loadConfig(); got.MD != "plan.md" {
+		t.Errorf("GUTTER_MD should set MD, got %q", got.MD)
+	}
+}
+
+func TestMergeConfigFileMD(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "c.json")
+	if err := os.WriteFile(p, []byte(`{"md":"spec.md"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	c := Config{}
+	mergeConfigFile(&c, p)
+	if c.MD != "spec.md" {
+		t.Errorf("md from file should set MD, got %q", c.MD)
+	}
+}
+
 func TestRenderDoc(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "doc.md")

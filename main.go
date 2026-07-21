@@ -198,6 +198,7 @@ type DiffData struct {
 	Prior    []Comment `json:"prior"`
 	PriorGen string    `json:"prior_general,omitempty"`
 	PR       *PRInfo   `json:"pr,omitempty"`
+	Doc      *Doc      `json:"doc,omitempty"`
 }
 
 type DocBlock struct {
@@ -288,7 +289,6 @@ func main() {
 		md        = flag.String("md", cfg.MD, "review a markdown file as a rendered document (compose with -sync)")
 	)
 	flag.Parse()
-	_ = md
 
 	if *editorCmd == "" {
 		if _, err := exec.LookPath("code"); err == nil {
@@ -319,6 +319,12 @@ func main() {
 		prInfo = &info
 	}
 
+	docPath := *md
+	if docPath != "" && prInfo != nil {
+		fmt.Fprintln(os.Stderr, "note: -md set; ignoring -pr")
+		prInfo = nil
+	}
+
 	outPath := *output
 	if !filepath.IsAbs(outPath) && *outDir != "" {
 		outPath = filepath.Join(*outDir, outPath)
@@ -332,6 +338,14 @@ func main() {
 	}
 
 	computeData := func() (DiffData, error) {
+		if docPath != "" {
+			doc, err := renderDoc(docPath)
+			if err != nil {
+				return DiffData{}, fmt.Errorf("rendering doc: %w", err)
+			}
+			priorComments, priorGen := loadPrior(outAbs)
+			return DiffData{Rev: docPath, VCS: "doc", Doc: &doc, Prior: priorComments, PriorGen: priorGen}, nil
+		}
 		var (
 			diff           string
 			untrackedPaths map[string]bool
@@ -398,7 +412,10 @@ func main() {
 
 	displayHdrRev := *rev
 	displayHdrVCS := vcs
-	if prInfo != nil {
+	if docPath != "" {
+		displayHdrRev = docPath
+		displayHdrVCS = "doc"
+	} else if prInfo != nil {
 		displayHdrRev = fmt.Sprintf("PR #%d", prInfo.Number)
 		displayHdrVCS = "github"
 	}
@@ -412,6 +429,7 @@ func main() {
 			"HasEditor": *editorCmd != "",
 			"Collapse":  *collapse,
 			"Sync":      *sync,
+			"Doc":       docPath != "",
 		})
 	})
 
@@ -474,7 +492,7 @@ func main() {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		md := renderMarkdown(*rev, vcs, "", prInfo, req)
+		md := renderMarkdown(*rev, vcs, docPath, prInfo, req)
 		if err := os.WriteFile(outAbs, []byte(md), 0644); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -496,7 +514,7 @@ func main() {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		md := renderMarkdown(*rev, vcs, "", prInfo, req)
+		md := renderMarkdown(*rev, vcs, docPath, prInfo, req)
 		select {
 		case submitCh <- md:
 		default: // already submitted; first one wins
@@ -515,7 +533,7 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		w.Write([]byte(renderMarkdown(*rev, vcs, "", prInfo, req)))
+		w.Write([]byte(renderMarkdown(*rev, vcs, docPath, prInfo, req)))
 	})
 
 	mux.HandleFunc("/quit", func(w http.ResponseWriter, r *http.Request) {
@@ -546,12 +564,15 @@ func main() {
 	if prInfo != nil {
 		fmt.Fprintln(infoW, "pr:       ", fmt.Sprintf("#%d", prInfo.Number), "("+prInfo.Repo+")")
 		fmt.Fprintln(os.Stderr, "note: showing the PR diff; the local working tree is NOT the PR's code")
-	} else {
+	} else if docPath == "" {
 		displayRev := *rev
 		if displayRev == "" {
 			displayRev = "(working tree)"
 		}
 		fmt.Fprintln(infoW, "rev:      ", displayRev, "("+vcs+")")
+	}
+	if docPath != "" {
+		fmt.Fprintln(infoW, "doc:      ", docPath)
 	}
 	if *sync {
 		fmt.Fprintln(infoW, "sync:      waiting for Submit (no review.md will be written)")

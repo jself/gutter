@@ -9,7 +9,8 @@ import (
 )
 
 // openWindow opens url in a native window titled `title`, blocking until the
-// window is closed. Must run on the main OS thread.
+// window is closed. GTK/WebKit require the main OS thread, so the caller MUST
+// invoke this synchronously from the main goroutine (never `go openWindow(...)`).
 func openWindow(url, title string) error {
 	runtime.LockOSThread()
 	w := webview.New(false)

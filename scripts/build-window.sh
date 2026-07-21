@@ -27,4 +27,6 @@ EOF
 	fi
 fi
 
-exec env CGO_ENABLED=1 go build -tags webview "$@"
+# Not `exec`: keep this shell alive so the EXIT trap removes the shim dir.
+# `set -e` forwards a non-zero build exit code.
+env CGO_ENABLED=1 go build -tags webview "$@"

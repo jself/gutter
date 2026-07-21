@@ -298,9 +298,16 @@ func main() {
 		}
 	}
 
+	docPath := *md
+
 	vcs, err := detectVCS()
 	if err != nil {
-		die("%v", err)
+		if docPath == "" {
+			die("%v", err)
+		}
+		// Doc mode renders a standalone markdown file and needs no VCS, so
+		// tolerate running outside a repo (editor "open" links won't resolve).
+		vcs = ""
 	}
 
 	if *rev == "" {
@@ -310,7 +317,6 @@ func main() {
 		// For git, leave rev empty to diff the working tree against HEAD.
 	}
 
-	docPath := *md
 	var prInfo *PRInfo
 	if *prArg != "" {
 		if docPath != "" {

@@ -40,7 +40,8 @@ Works with both [jj](https://github.com/jj-vcs/jj) and git.
 
 ## Install
 
-Requires Go 1.16+.
+Requires Go 1.22+ (bumped from 1.16 to build the `-md` document renderer's
+[goldmark](https://github.com/yuin/goldmark) dependency).
 
 ```
 git clone https://github.com/jself/gutter ~/code/gutter
@@ -79,6 +80,7 @@ that have been addressed, add new ones, and save again.
 |---|---|---|
 | `-r <revset>` | `@` (jj) / working tree (git) | What to diff. jj: a revset, e.g. `main..@`. git: a rev, e.g. `HEAD~3`, or empty for unstaged changes. |
 | `-pr <number\|url>` | — | Review a GitHub PR instead of a local diff. See [Reviewing a GitHub PR](#reviewing-a-github-pr). |
+| `-md <file>` | — | Render a markdown file as a document instead of reviewing a diff. See [Reviewing a markdown document](#reviewing-a-markdown-document). |
 | `-sync` | `false` | One-shot mode for agents: block until Submit, print the review to stdout, write no file. See [Agent sync mode](#agent-sync-mode). |
 | `-o <path>` | `review.md` | Output file for the markdown review. |
 | `-port <n>` | random | HTTP port to listen on. |
@@ -100,6 +102,7 @@ config (`$XDG_CONFIG_HOME/gutter/config.json`, falling back to
 |---|---|
 | `GUTTER_REV` | `-r` |
 | `GUTTER_PR` | `-pr` |
+| `GUTTER_MD` | `-md` |
 | `GUTTER_SYNC` | `-sync` (`true` / `false`) |
 | `GUTTER_OUTPUT` | `-o` |
 | `GUTTER_DIR` | `-dir` |
@@ -115,6 +118,7 @@ config (`$XDG_CONFIG_HOME/gutter/config.json`, falling back to
 {
   "rev": "@{u}",
   "pr": "",
+  "md": "",
   "sync": false,
   "dir": ".claude",
   "output": "review.md",
@@ -252,6 +256,40 @@ To post a comment: `gh` review-comment API — use `head` as the commit id,
 
 This block tells the agent exactly how to load context and post comments back
 via `gh`.
+
+### Reviewing a markdown document
+
+`-md <file>` switches gutter from diff review to document review: it renders
+the given markdown file (using [goldmark](https://github.com/yuin/goldmark),
+gutter's only Go dependency) as a formatted document instead of a diff.
+
+```
+gutter -md docs/plan.md
+```
+
+Click any rendered block (paragraph, heading, list item, code fence, etc.) to
+leave a comment on it. Block comments anchor to the block's source line range
+in the markdown file, so `review.md` keeps the usual `### file:line-end`
+format — there's nothing new to parse on the agent side.
+
+Combine with `-sync` for the agent plan-review loop — have the agent write a
+plan, then have the human review and approve/annotate it before any code is
+touched:
+
+```
+gutter -sync -md docs/plan.md
+```
+
+This blocks until Submit and prints the review to stdout, same as diff
+`-sync` mode; no file is written.
+
+Notes:
+
+- `-md` takes precedence over `-pr`: if both are given, gutter prints a note
+  and ignores `-pr`.
+- `-md` ignores `-r` — there's no revset to diff in document mode.
+- Non-sync doc mode writes `review.md` titled `# Review of <path>` instead of
+  the usual `# Review of <revset>`.
 
 ### Revset examples
 

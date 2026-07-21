@@ -16,6 +16,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 )
 
 //go:embed index.html
@@ -31,6 +35,7 @@ type Config struct {
 	Collapse int    `json:"collapse,omitempty"`
 	PR       string `json:"pr,omitempty"`
 	Sync     bool   `json:"sync,omitempty"`
+	MD       string `json:"md,omitempty"`
 }
 
 func defaultConfig() Config {
@@ -83,6 +88,9 @@ func loadConfig() Config {
 	if v := os.Getenv("GUTTER_SYNC"); v != "" {
 		c.Sync = v != "0" && v != "false" && v != "no"
 	}
+	if v := os.Getenv("GUTTER_MD"); v != "" {
+		c.MD = v
+	}
 	return c
 }
 
@@ -122,6 +130,9 @@ func mergeConfigFile(c *Config, path string) {
 	}
 	if f.Sync {
 		c.Sync = true
+	}
+	if f.MD != "" {
+		c.MD = f.MD
 	}
 }
 
@@ -187,6 +198,19 @@ type DiffData struct {
 	Prior    []Comment `json:"prior"`
 	PriorGen string    `json:"prior_general,omitempty"`
 	PR       *PRInfo   `json:"pr,omitempty"`
+	Doc      *Doc      `json:"doc,omitempty"`
+}
+
+type DocBlock struct {
+	HTML      string `json:"html"`
+	LineStart int    `json:"line_start"`
+	LineEnd   int    `json:"line_end"`
+	Source    string `json:"source"`
+}
+
+type Doc struct {
+	Path   string     `json:"path"`
+	Blocks []DocBlock `json:"blocks"`
 }
 
 type Comment struct {
@@ -262,6 +286,7 @@ func main() {
 		collapse  = flag.Int("collapse", cfg.Collapse, "auto-collapse files with more than N changed lines (0 disables)")
 		prArg     = flag.String("pr", cfg.PR, "review a GitHub PR by number or URL (uses the gh CLI)")
 		sync      = flag.Bool("sync", cfg.Sync, "one-shot review: block until Submit, print the review to stdout, then exit (no review.md written)")
+		md        = flag.String("md", cfg.MD, "review a markdown file as a rendered document (compose with -sync)")
 	)
 	flag.Parse()
 
@@ -273,9 +298,16 @@ func main() {
 		}
 	}
 
+	docPath := *md
+
 	vcs, err := detectVCS()
 	if err != nil {
-		die("%v", err)
+		if docPath == "" {
+			die("%v", err)
+		}
+		// Doc mode renders a standalone markdown file and needs no VCS, so
+		// tolerate running outside a repo (editor "open" links won't resolve).
+		vcs = ""
 	}
 
 	if *rev == "" {
@@ -287,11 +319,15 @@ func main() {
 
 	var prInfo *PRInfo
 	if *prArg != "" {
-		info, err := githubPRInfo(*prArg)
-		if err != nil {
-			die("%v", err)
+		if docPath != "" {
+			fmt.Fprintln(os.Stderr, "note: -md set; ignoring -pr")
+		} else {
+			info, err := githubPRInfo(*prArg)
+			if err != nil {
+				die("%v", err)
+			}
+			prInfo = &info
 		}
-		prInfo = &info
 	}
 
 	outPath := *output
@@ -307,6 +343,14 @@ func main() {
 	}
 
 	computeData := func() (DiffData, error) {
+		if docPath != "" {
+			doc, err := renderDoc(docPath)
+			if err != nil {
+				return DiffData{}, fmt.Errorf("rendering doc: %w", err)
+			}
+			priorComments, priorGen := loadPrior(outAbs)
+			return DiffData{Rev: docPath, VCS: "doc", Doc: &doc, Prior: priorComments, PriorGen: priorGen}, nil
+		}
 		var (
 			diff           string
 			untrackedPaths map[string]bool
@@ -354,7 +398,7 @@ func main() {
 	if err != nil {
 		die("%v", err)
 	}
-	if len(data.Files) == 0 {
+	if docPath == "" && len(data.Files) == 0 {
 		fmt.Fprintln(os.Stderr, "No changes found yet — server will stay up, reload to check again")
 	}
 	if len(data.Prior) > 0 || data.PriorGen != "" {
@@ -373,7 +417,10 @@ func main() {
 
 	displayHdrRev := *rev
 	displayHdrVCS := vcs
-	if prInfo != nil {
+	if docPath != "" {
+		displayHdrRev = docPath
+		displayHdrVCS = "doc"
+	} else if prInfo != nil {
 		displayHdrRev = fmt.Sprintf("PR #%d", prInfo.Number)
 		displayHdrVCS = "github"
 	}
@@ -387,6 +434,7 @@ func main() {
 			"HasEditor": *editorCmd != "",
 			"Collapse":  *collapse,
 			"Sync":      *sync,
+			"Doc":       docPath != "",
 		})
 	})
 
@@ -449,7 +497,7 @@ func main() {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		md := renderMarkdown(*rev, vcs, prInfo, req)
+		md := renderMarkdown(*rev, vcs, docPath, prInfo, req)
 		if err := os.WriteFile(outAbs, []byte(md), 0644); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -471,7 +519,7 @@ func main() {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		md := renderMarkdown(*rev, vcs, prInfo, req)
+		md := renderMarkdown(*rev, vcs, docPath, prInfo, req)
 		select {
 		case submitCh <- md:
 		default: // already submitted; first one wins
@@ -490,7 +538,7 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		w.Write([]byte(renderMarkdown(*rev, vcs, prInfo, req)))
+		w.Write([]byte(renderMarkdown(*rev, vcs, docPath, prInfo, req)))
 	})
 
 	mux.HandleFunc("/quit", func(w http.ResponseWriter, r *http.Request) {
@@ -521,12 +569,15 @@ func main() {
 	if prInfo != nil {
 		fmt.Fprintln(infoW, "pr:       ", fmt.Sprintf("#%d", prInfo.Number), "("+prInfo.Repo+")")
 		fmt.Fprintln(os.Stderr, "note: showing the PR diff; the local working tree is NOT the PR's code")
-	} else {
+	} else if docPath == "" {
 		displayRev := *rev
 		if displayRev == "" {
 			displayRev = "(working tree)"
 		}
 		fmt.Fprintln(infoW, "rev:      ", displayRev, "("+vcs+")")
+	}
+	if docPath != "" {
+		fmt.Fprintln(infoW, "doc:      ", docPath)
 	}
 	if *sync {
 		fmt.Fprintln(infoW, "sync:      waiting for Submit (no review.md will be written)")
@@ -563,6 +614,104 @@ func detectVCS() (string, error) {
 		return "git", nil
 	}
 	return "", fmt.Errorf("not a jj or git repository")
+}
+
+var mdRenderer = goldmark.New()
+
+// renderDoc parses a markdown file and returns its top-level blocks, each with
+// its rendered HTML fragment and 1-based source line range.
+func renderDoc(path string) (Doc, error) {
+	// No size cap: -md points at a local file the user chose to review.
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return Doc{}, err
+	}
+	lineStarts := computeLineStarts(src)
+	root := mdRenderer.Parser().Parse(text.NewReader(src))
+	var blocks []DocBlock
+	for n := root.FirstChild(); n != nil; n = n.NextSibling() {
+		start, end := nodeLineRange(n, lineStarts)
+		var buf bytes.Buffer
+		if err := mdRenderer.Renderer().Render(&buf, src, n); err != nil {
+			return Doc{}, err
+		}
+		source := ""
+		if start >= 1 && start <= len(lineStarts) {
+			s := lineStarts[start-1]
+			e := len(src)
+			if end < len(lineStarts) {
+				e = lineStarts[end] // start of the line after `end`
+			}
+			source = strings.TrimRight(string(src[s:e]), "\r\n")
+		}
+		blocks = append(blocks, DocBlock{
+			HTML:      buf.String(),
+			LineStart: start,
+			LineEnd:   end,
+			Source:    source,
+		})
+	}
+	return Doc{Path: path, Blocks: blocks}, nil
+}
+
+// computeLineStarts returns the byte offset at which each source line begins.
+func computeLineStarts(src []byte) []int {
+	starts := []int{0}
+	for i, b := range src {
+		if b == '\n' {
+			starts = append(starts, i+1)
+		}
+	}
+	return starts
+}
+
+// offsetToLine maps a byte offset to its 1-based line number.
+func offsetToLine(lineStarts []int, off int) int {
+	lo, hi := 0, len(lineStarts)-1
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if lineStarts[mid] <= off {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return lo + 1
+}
+
+// nodeLineRange returns the 1-based source line span covered by a block node,
+// derived from the text segments of the node and its descendants. Nodes with no
+// text segments (e.g. thematic breaks) fall back to line 1.
+func nodeLineRange(n ast.Node, lineStarts []int) (int, int) {
+	minOff, maxOff := -1, -1
+	var visit func(ast.Node)
+	visit = func(nd ast.Node) {
+		if nd.Type() == ast.TypeBlock {
+			if lines := nd.Lines(); lines != nil && lines.Len() > 0 {
+				for i := 0; i < lines.Len(); i++ {
+					seg := lines.At(i)
+					if minOff == -1 || seg.Start < minOff {
+						minOff = seg.Start
+					}
+					if seg.Stop > maxOff {
+						maxOff = seg.Stop
+					}
+				}
+			}
+		}
+		for c := nd.FirstChild(); c != nil; c = c.NextSibling() {
+			visit(c)
+		}
+	}
+	visit(n)
+	if minOff == -1 {
+		return 1, 1
+	}
+	endOff := maxOff - 1
+	if endOff < minOff {
+		endOff = minOff
+	}
+	return offsetToLine(lineStarts, minOff), offsetToLine(lineStarts, endOff)
 }
 
 func getDiff(vcs, rev string) (string, map[string]bool, error) {
@@ -742,9 +891,11 @@ func parseHunkHeader(ln string) Hunk {
 	return h
 }
 
-func renderMarkdown(rev, vcs string, pr *PRInfo, req SaveRequest) string {
+func renderMarkdown(rev, vcs, docPath string, pr *PRInfo, req SaveRequest) string {
 	var b strings.Builder
-	if pr != nil {
+	if docPath != "" {
+		fmt.Fprintf(&b, "# Review of %s\n\n", docPath)
+	} else if pr != nil {
 		fmt.Fprintf(&b, "# Review of PR #%d (github)\n\n", pr.Number)
 		fmt.Fprintf(&b, "## PR\n\n")
 		fmt.Fprintf(&b, "- repo: %s\n", pr.Repo)

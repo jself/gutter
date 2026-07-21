@@ -133,12 +133,24 @@
   .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
   .modal button { background: var(--accent); color: #fff; border: 0; padding: 6px 14px; border-radius: 4px; cursor: pointer; font: inherit; font-weight: 600; }
   .modal button.cancel { background: transparent; border: 1px solid var(--border); color: var(--text); font-weight: 400; }
+  .doc { max-width: 860px; margin: 0 auto; padding: 8px 20px 40px; }
+  .doc-block { position: relative; padding: 2px 10px; border-radius: 4px; cursor: pointer; }
+  .doc-block:hover { background: var(--panel); }
+  .doc-block.selected { background: var(--selected); }
+  .doc-block.has-comment-block { box-shadow: inset 3px 0 0 var(--accent); }
+  .doc-block h1, .doc-block h2, .doc-block h3 { margin: 0.6em 0 0.3em; }
+  .doc-block p, .doc-block ul, .doc-block ol { margin: 0.4em 0; line-height: 1.55; }
+  .doc-block pre { background: var(--panel-deep); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
+  .doc-block code { font-family: inherit; }
+  .doc-block :not(pre) > code { background: var(--panel-deep); padding: 1px 4px; border-radius: 3px; }
+  .doc-saved-comment { max-width: 860px; margin: 2px auto 8px; }
+  .doc-comment-form { max-width: 860px; margin: 4px auto; }
 </style>
 </head>
 <body>
 <header>
   <button class="secondary" id="sidebarToggle" title="Toggle file list" style="padding: 4px 10px;">☰</button>
-  <div>rev <span class="rev">{{.Rev}}</span> ({{.VCS}})</div>
+  <div>{{if .Doc}}doc <span class="rev">{{.Rev}}</span>{{else}}rev <span class="rev">{{.Rev}}</span> ({{.VCS}}){{end}}</div>
   <div class="viewing">Viewing: <span id="viewing">All files</span></div>
   {{if not .Sync}}<div class="out">→ {{.Out}}</div>{{end}}
   <div class="spacer"></div>
@@ -217,6 +229,7 @@ async function load() {
 }
 
 function render() {
+  if (DATA.doc) { renderDocView(); renderSidebar(); renderComments(); return; }
   renderSidebar();
   updateViewing();
   const container = document.getElementById('files');
@@ -449,7 +462,136 @@ if (copyBtnEl) copyBtnEl.addEventListener('click', async () => {
   }
 });
 
+function renderDocView() {
+  updateViewing();
+  const container = document.getElementById('files');
+  container.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'doc';
+  DATA.doc.blocks.forEach((b, bi) => {
+    const el = document.createElement('div');
+    el.className = 'doc-block';
+    el.dataset.bi = bi;
+    el.innerHTML = b.html;
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('a')) return;
+      const sel = window.getSelection();
+      if (sel && sel.toString().trim() && el.contains(sel.anchorNode)) return; // don't hijack in-block text selection
+      openDocCommentForm(bi);
+    });
+    wrap.appendChild(el);
+  });
+  container.appendChild(wrap);
+  if (window.hljs) {
+    container.querySelectorAll('pre code').forEach(el => { try { hljs.highlightElement(el); } catch (e) {} });
+  }
+}
+
+function openDocCommentForm(bi) {
+  const b = DATA.doc.blocks[bi];
+  const blockEl = document.querySelector(`.doc-block[data-bi="${bi}"]`);
+  if (!blockEl) return;
+  document.querySelectorAll('.doc-comment-form').forEach(r => r.remove());
+  document.querySelectorAll('.doc-block.selected').forEach(r => r.classList.remove('selected'));
+  blockEl.classList.add('selected');
+  const range = b.line_end !== b.line_start ? '-' + b.line_end : '';
+  const form = document.createElement('div');
+  form.className = 'comment-form doc-comment-form';
+  form.innerHTML = `
+    <div style="color: var(--muted); margin-bottom: 4px;">${escapeHtml(DATA.doc.path)}:${b.line_start}${range}</div>
+    <textarea placeholder="Comment for the agent..."></textarea>
+    <div class="actions">
+      <button type="button">Add comment</button>
+      <button type="button" class="cancel">Cancel</button>
+    </div>`;
+  blockEl.after(form);
+  const ta = form.querySelector('textarea');
+  ta.focus();
+  form.querySelector('button').addEventListener('click', () => {
+    const body = ta.value.trim();
+    if (!body) { form.remove(); blockEl.classList.remove('selected'); return; }
+    COMMENTS.push({
+      id: nextId++,
+      path: DATA.doc.path,
+      side: 'new',
+      line: b.line_start,
+      end_line: b.line_end,
+      snippet: b.source,
+      body,
+    });
+    form.remove();
+    blockEl.classList.remove('selected');
+    renderComments();
+  });
+  form.querySelector('button.cancel').addEventListener('click', () => {
+    form.remove();
+    blockEl.classList.remove('selected');
+  });
+  ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) form.querySelector('button').click();
+    else if (e.key === 'Escape') form.querySelector('button.cancel').click();
+  });
+}
+
+function renderDocComments() {
+  document.querySelectorAll('.doc-saved-comment').forEach(r => r.remove());
+  document.querySelectorAll('.doc-block.has-comment-block').forEach(el => el.classList.remove('has-comment-block'));
+  const unattached = [];
+  COMMENTS.forEach(c => {
+    let bi = -1;
+    if (c.path === DATA.doc.path) {
+      bi = DATA.doc.blocks.findIndex(b => b.line_start <= c.line && c.line <= b.line_end);
+    }
+    const blockEl = bi >= 0 ? document.querySelector(`.doc-block[data-bi="${bi}"]`) : null;
+    if (!blockEl) { unattached.push(c); return; }
+    blockEl.classList.add('has-comment-block');
+    const range = c.end_line && c.end_line !== c.line ? '-' + c.end_line : '';
+    const div = document.createElement('div');
+    div.className = 'doc-saved-comment';
+    div.innerHTML = `
+      <div class="saved-comment ${c.prior ? 'prior' : ''}">
+        <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}</div>
+        <div class="body">${escapeHtml(c.body)}</div>
+        <div class="controls">
+          <button type="button" data-id="${c.id}" data-action="edit">edit</button>
+          <button type="button" data-id="${c.id}" data-action="del">delete</button>
+        </div>
+      </div>`;
+    blockEl.after(div);
+    div.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = +btn.dataset.id, action = btn.dataset.action;
+        const idx = COMMENTS.findIndex(x => x.id === id);
+        if (idx < 0) return;
+        if (action === 'del') { COMMENTS.splice(idx, 1); renderComments(); }
+        else if (action === 'edit') { openEditModal(COMMENTS[idx]); }
+      });
+    });
+  });
+  renderUnattached(unattached);
+}
+
+function renderOutline() {
+  const ul = document.getElementById('fileList');
+  ul.innerHTML = '';
+  DATA.doc.blocks.forEach((b, bi) => {
+    const m = b.html.match(/^<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/i);
+    if (!m) return;
+    const li = document.createElement('li');
+    li.dataset.bi = bi;
+    li.style.paddingLeft = (4 + (parseInt(m[1], 10) - 1) * 10) + 'px';
+    const text = m[2].replace(/<[^>]+>/g, '');
+    li.innerHTML = `<span class="path" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`;
+    li.addEventListener('click', () => {
+      const el = document.querySelector(`.doc-block[data-bi="${bi}"]`);
+      if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+    ul.appendChild(li);
+  });
+}
+
 function renderSidebar() {
+  if (DATA.doc) { renderOutline(); return; }
   const ul = document.getElementById('fileList');
   ul.innerHTML = '';
   DATA.files.forEach(f => {
@@ -545,6 +687,7 @@ function markLineNumbers() {
 }
 
 function renderComments() {
+  if (DATA.doc) { renderDocComments(); return; }
   document.querySelectorAll('tr.saved-comment-row').forEach(r => r.remove());
   const unattached = [];
   COMMENTS.forEach(c => {

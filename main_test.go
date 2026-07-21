@@ -45,7 +45,7 @@ func TestRenderMarkdownPRBlock(t *testing.T) {
 			{Path: "b.go", Side: "old", Line: 5, Body: "old-side note"},
 		},
 	}
-	md := renderMarkdown("", "git", pr, req)
+	md := renderMarkdown("", "git", "", pr, req)
 
 	for _, want := range []string{
 		"# Review of PR #123 (github)",
@@ -74,7 +74,7 @@ func TestLoadPriorRoundTripSide(t *testing.T) {
 		{Path: "a.go", Side: "new", Line: 10, Body: "new note"},
 		{Path: "b.go", Side: "old", Line: 5, Body: "old note"},
 	}}
-	if err := os.WriteFile(path, []byte(renderMarkdown("", "git", pr, req)), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(renderMarkdown("", "git", "", pr, req)), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -105,7 +105,7 @@ func TestLoadPriorLegacyNoSuffix(t *testing.T) {
 
 func TestRenderMarkdownLocalUnchanged(t *testing.T) {
 	req := SaveRequest{Comments: []Comment{{Path: "a.go", Side: "new", Line: 10, Body: "x"}}}
-	md := renderMarkdown("@", "jj", nil, req)
+	md := renderMarkdown("@", "jj", "", nil, req)
 	if strings.Contains(md, "## PR") {
 		t.Errorf("local review should not contain a PR block:\n%s", md)
 	}
@@ -119,9 +119,25 @@ func TestRenderMarkdownLocalUnchanged(t *testing.T) {
 
 func TestRenderMarkdownLocalOldSideNoSuffix(t *testing.T) {
 	req := SaveRequest{Comments: []Comment{{Path: "a.go", Side: "old", Line: 3, Body: "del note"}}}
-	md := renderMarkdown("@", "jj", nil, req)
+	md := renderMarkdown("@", "jj", "", nil, req)
 	if strings.Contains(md, "(LEFT)") {
 		t.Errorf("local review should not emit LEFT suffix:\n%s", md)
+	}
+}
+
+func TestRenderMarkdownDocTitle(t *testing.T) {
+	req := SaveRequest{Comments: []Comment{{Path: "plan.md", Side: "new", Line: 5, Body: "note"}}}
+	md := renderMarkdown("", "git", "docs/plan.md", nil, req)
+	if !strings.Contains(md, "# Review of docs/plan.md\n") {
+		t.Errorf("doc title missing:\n%s", md)
+	}
+	if strings.Contains(md, "(git)") {
+		t.Errorf("doc title should not include vcs:\n%s", md)
+	}
+	// Non-doc path unchanged
+	md2 := renderMarkdown("@", "jj", "", nil, req)
+	if !strings.Contains(md2, "# Review of `@` (jj)") {
+		t.Errorf("non-doc title changed:\n%s", md2)
 	}
 }
 
@@ -140,7 +156,7 @@ func TestLoadPriorIgnoresPRBlock(t *testing.T) {
 		General:  "overall note",
 		Comments: []Comment{{Path: "c.go", Side: "new", Line: 7, Body: "inline note"}},
 	}
-	if err := os.WriteFile(path, []byte(renderMarkdown("", "git", pr, req)), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(renderMarkdown("", "git", "", pr, req)), 0644); err != nil {
 		t.Fatal(err)
 	}
 	got, gen := loadPrior(path)
@@ -187,5 +203,80 @@ func TestLoadConfigSyncEnv(t *testing.T) {
 	t.Setenv("GUTTER_SYNC", "false")
 	if got := loadConfig(); got.Sync {
 		t.Errorf("GUTTER_SYNC=false should yield Sync=false")
+	}
+}
+
+func TestLoadConfigMDEnv(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("GUTTER_MD", "plan.md")
+	if got := loadConfig(); got.MD != "plan.md" {
+		t.Errorf("GUTTER_MD should set MD, got %q", got.MD)
+	}
+}
+
+func TestMergeConfigFileMD(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "c.json")
+	if err := os.WriteFile(p, []byte(`{"md":"spec.md"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	c := Config{}
+	mergeConfigFile(&c, p)
+	if c.MD != "spec.md" {
+		t.Errorf("md from file should set MD, got %q", c.MD)
+	}
+}
+
+func TestRenderDoc(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	src := "# Title\n\nA paragraph.\n\n```go\nx := 1\n```\n\n- item one\n- item two\n"
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := renderDoc(path)
+	if err != nil {
+		t.Fatalf("renderDoc: %v", err)
+	}
+	if doc.Path != path {
+		t.Errorf("Path = %q, want %q", doc.Path, path)
+	}
+	if len(doc.Blocks) != 4 {
+		t.Fatalf("got %d blocks, want 4: %+v", len(doc.Blocks), doc.Blocks)
+	}
+	// Heading on line 1
+	if doc.Blocks[0].LineStart != 1 || doc.Blocks[0].LineEnd != 1 {
+		t.Errorf("heading range = %d-%d, want 1-1", doc.Blocks[0].LineStart, doc.Blocks[0].LineEnd)
+	}
+	// Paragraph on line 3
+	if doc.Blocks[1].LineStart != 3 || doc.Blocks[1].LineEnd != 3 {
+		t.Errorf("paragraph range = %d-%d, want 3-3", doc.Blocks[1].LineStart, doc.Blocks[1].LineEnd)
+	}
+	// Fenced code lives within lines 5-7 (goldmark anchors to content; don't over-assert)
+	if doc.Blocks[2].LineStart < 5 || doc.Blocks[2].LineEnd > 7 {
+		t.Errorf("code range = %d-%d, want within 5-7", doc.Blocks[2].LineStart, doc.Blocks[2].LineEnd)
+	}
+	// List spans lines 9-10
+	if doc.Blocks[3].LineStart != 9 || doc.Blocks[3].LineEnd != 10 {
+		t.Errorf("list range = %d-%d, want 9-10", doc.Blocks[3].LineStart, doc.Blocks[3].LineEnd)
+	}
+	// Every block has rendered HTML and source text
+	for i, b := range doc.Blocks {
+		if strings.TrimSpace(b.HTML) == "" {
+			t.Errorf("block %d has empty HTML", i)
+		}
+		if strings.TrimSpace(b.Source) == "" {
+			t.Errorf("block %d has empty Source", i)
+		}
+	}
+	// Rendered HTML is real markdown output
+	if !strings.Contains(doc.Blocks[0].HTML, "<h1") {
+		t.Errorf("heading HTML = %q, want an <h1>", doc.Blocks[0].HTML)
+	}
+}
+
+func TestRenderDocMissingFile(t *testing.T) {
+	if _, err := renderDoc(filepath.Join(t.TempDir(), "nope.md")); err == nil {
+		t.Fatal("expected error for missing file, got nil")
 	}
 }

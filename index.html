@@ -102,6 +102,8 @@
   .comment-form .actions { margin-top: 6px; display: flex; gap: 8px; }
   .comment-form button { background: var(--accent); color: #fff; border: 0; padding: 4px 10px; border-radius: 4px; cursor: pointer; font: inherit; }
   .comment-form button.cancel { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  select.severity { display: block; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; font: inherit; margin-bottom: 6px; }
+  .saved-comment .loc .sev { color: var(--accent); font-weight: 600; }
   .saved-comment { color: var(--text); }
   .saved-comment .body { white-space: pre-wrap; }
   .saved-comment .loc { color: var(--muted); margin-bottom: 4px; }
@@ -185,6 +187,7 @@
   <div class="modal">
     <h4 id="editTitle">Edit comment</h4>
     <div class="loc" id="editLoc"></div>
+    <select class="severity" id="editSeverity"></select>
     <textarea id="editBody"></textarea>
     <div class="actions">
       <button class="cancel" type="button" id="editCancel">Cancel</button>
@@ -201,6 +204,15 @@ let dragStart = null; // {fileIdx, hunkIdx, lineIdx}
 const HAS_EDITOR = {{if .HasEditor}}true{{else}}false{{end}};
 const COLLAPSE_THRESHOLD = {{.Collapse}}; // total +/- lines, 0 = never
 const SYNC = {{if .Sync}}true{{else}}false{{end}};
+const SEVERITY_MODE = {{if .Severity}}true{{else}}false{{end}};
+const SEVERITIES = ['BLOCKING', 'IMPORTANT', 'SUGGESTION', 'QUESTION', 'NITPICK'];
+function severityOptionsHTML(selected) {
+  const sel = SEVERITIES.includes(selected) ? selected : 'QUESTION';
+  return SEVERITIES.map(s => `<option value="${s}"${s === sel ? ' selected' : ''}>${s}</option>`).join('');
+}
+function severitySelectHTML() {
+  return SEVERITY_MODE ? `<select class="severity">${severityOptionsHTML('QUESTION')}</select>` : '';
+}
 let activeFileFilter = null; // path or null
 let textFilter = '';
 
@@ -218,6 +230,7 @@ async function load() {
         end_line: c.end_line || c.line,
         snippet: c.snippet || '',
         body: c.body,
+        severity: c.severity || 'QUESTION',
         prior: true,
       });
     }
@@ -374,6 +387,7 @@ function openCommentForm(a, b) {
     <td colspan="3">
       <div class="comment-form">
         <div style="color: var(--muted); margin-bottom: 4px;">${escapeHtml(file.path)}:${startNum}${endNum !== startNum ? '-' + endNum : ''}</div>
+        ${severitySelectHTML()}
         <textarea autofocus placeholder="Comment for the agent..."></textarea>
         <div class="actions">
           <button type="button">Add comment</button>
@@ -396,6 +410,7 @@ function openCommentForm(a, b) {
       end_line: endNum,
       snippet,
       body,
+      severity: SEVERITY_MODE ? tr.querySelector('select.severity').value : undefined,
     });
     tr.remove();
     document.querySelectorAll('tr.selected').forEach(r => r.classList.remove('selected'));
@@ -499,6 +514,7 @@ function openDocCommentForm(bi) {
   form.className = 'comment-form doc-comment-form';
   form.innerHTML = `
     <div style="color: var(--muted); margin-bottom: 4px;">${escapeHtml(DATA.doc.path)}:${b.line_start}${range}</div>
+    ${severitySelectHTML()}
     <textarea placeholder="Comment for the agent..."></textarea>
     <div class="actions">
       <button type="button">Add comment</button>
@@ -518,6 +534,7 @@ function openDocCommentForm(bi) {
       end_line: b.line_end,
       snippet: b.source,
       body,
+      severity: SEVERITY_MODE ? form.querySelector('select.severity').value : undefined,
     });
     form.remove();
     blockEl.classList.remove('selected');
@@ -550,7 +567,7 @@ function renderDocComments() {
     div.className = 'doc-saved-comment';
     div.innerHTML = `
       <div class="saved-comment ${c.prior ? 'prior' : ''}">
-        <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}</div>
+        <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}${SEVERITY_MODE ? ` <span class="sev">${escapeHtml(c.severity || 'QUESTION')}</span>` : ''}</div>
         <div class="body">${escapeHtml(c.body)}</div>
         <div class="controls">
           <button type="button" data-id="${c.id}" data-action="edit">edit</button>
@@ -700,7 +717,7 @@ function renderComments() {
     tr.innerHTML = `
       <td colspan="3">
         <div class="saved-comment ${c.prior ? 'prior' : ''}">
-          <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}</div>
+          <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}${SEVERITY_MODE ? ` <span class="sev">${escapeHtml(c.severity || 'QUESTION')}</span>` : ''}</div>
           <div class="body">${escapeHtml(c.body)}</div>
           <div class="controls">
             <button type="button" data-id="${c.id}" data-action="edit">edit</button>
@@ -749,7 +766,7 @@ function renderUnattached(list) {
       const range = c.end_line && c.end_line !== c.line ? '-' + c.end_line : '';
       return `<div style="padding: 10px 12px; border-top: 1px solid var(--border);">
         <div class="saved-comment prior">
-          <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}</div>
+          <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}${SEVERITY_MODE ? ` <span class="sev">${escapeHtml(c.severity || 'QUESTION')}</span>` : ''}</div>
           <div class="body">${escapeHtml(c.body)}</div>
           <div class="controls">
             <button type="button" data-id="${c.id}" data-action="edit">edit</button>
@@ -775,6 +792,9 @@ function openEditModal(c) {
   editingId = c.id;
   const range = c.end_line && c.end_line !== c.line ? '-' + c.end_line : '';
   document.getElementById('editLoc').textContent = `${c.path}:${c.line}${range}`;
+  const editSev = document.getElementById('editSeverity');
+  editSev.style.display = SEVERITY_MODE ? '' : 'none';
+  if (SEVERITY_MODE) editSev.innerHTML = severityOptionsHTML(c.severity || 'QUESTION');
   document.getElementById('editBody').value = c.body;
   document.getElementById('editModal').classList.add('show');
   setTimeout(() => document.getElementById('editBody').focus(), 0);
@@ -790,7 +810,11 @@ document.getElementById('editSave').addEventListener('click', () => {
   if (!c) return closeEditModal();
   const v = document.getElementById('editBody').value.trim();
   if (!v) { COMMENTS.splice(COMMENTS.indexOf(c), 1); }
-  else { c.body = v; c.prior = false; }
+  else {
+    c.body = v;
+    if (SEVERITY_MODE) c.severity = document.getElementById('editSeverity').value;
+    c.prior = false;
+  }
   closeEditModal();
   renderComments();
 });

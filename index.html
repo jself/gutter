@@ -229,7 +229,7 @@ async function load() {
 }
 
 function render() {
-  if (DATA.doc) { renderDocView(); renderComments(); return; }
+  if (DATA.doc) { renderDocView(); renderSidebar(); renderComments(); return; }
   renderSidebar();
   updateViewing();
   const container = document.getElementById('files');

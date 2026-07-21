@@ -510,12 +510,10 @@ func main() {
 		die("listen: %v", err)
 	}
 	url := fmt.Sprintf("http://%s", ln.Addr().String())
-	// In sync mode, stdout is reserved for the rendered review; send all
-	// informational banner output to stderr instead.
-	infoW := os.Stdout
-	if *sync {
-		infoW = os.Stderr
-	}
+	// The startup banner is diagnostic, not program output, so it always goes
+	// to stderr. This keeps stdout clean in every mode — reserved for the
+	// rendered review in sync mode, and empty otherwise.
+	infoW := os.Stderr
 	fmt.Fprintln(infoW, "gutter:", url)
 	if !*sync {
 		fmt.Fprintln(infoW, "output:   ", outAbs)

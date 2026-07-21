@@ -189,3 +189,57 @@ func TestLoadConfigSyncEnv(t *testing.T) {
 		t.Errorf("GUTTER_SYNC=false should yield Sync=false")
 	}
 }
+
+func TestRenderDoc(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	src := "# Title\n\nA paragraph.\n\n```go\nx := 1\n```\n\n- item one\n- item two\n"
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := renderDoc(path)
+	if err != nil {
+		t.Fatalf("renderDoc: %v", err)
+	}
+	if doc.Path != path {
+		t.Errorf("Path = %q, want %q", doc.Path, path)
+	}
+	if len(doc.Blocks) != 4 {
+		t.Fatalf("got %d blocks, want 4: %+v", len(doc.Blocks), doc.Blocks)
+	}
+	// Heading on line 1
+	if doc.Blocks[0].LineStart != 1 || doc.Blocks[0].LineEnd != 1 {
+		t.Errorf("heading range = %d-%d, want 1-1", doc.Blocks[0].LineStart, doc.Blocks[0].LineEnd)
+	}
+	// Paragraph on line 3
+	if doc.Blocks[1].LineStart != 3 || doc.Blocks[1].LineEnd != 3 {
+		t.Errorf("paragraph range = %d-%d, want 3-3", doc.Blocks[1].LineStart, doc.Blocks[1].LineEnd)
+	}
+	// Fenced code lives within lines 5-7 (goldmark anchors to content; don't over-assert)
+	if doc.Blocks[2].LineStart < 5 || doc.Blocks[2].LineEnd > 7 {
+		t.Errorf("code range = %d-%d, want within 5-7", doc.Blocks[2].LineStart, doc.Blocks[2].LineEnd)
+	}
+	// List spans lines 9-10
+	if doc.Blocks[3].LineStart != 9 || doc.Blocks[3].LineEnd != 10 {
+		t.Errorf("list range = %d-%d, want 9-10", doc.Blocks[3].LineStart, doc.Blocks[3].LineEnd)
+	}
+	// Every block has rendered HTML and source text
+	for i, b := range doc.Blocks {
+		if strings.TrimSpace(b.HTML) == "" {
+			t.Errorf("block %d has empty HTML", i)
+		}
+		if strings.TrimSpace(b.Source) == "" {
+			t.Errorf("block %d has empty Source", i)
+		}
+	}
+	// Rendered HTML is real markdown output
+	if !strings.Contains(doc.Blocks[0].HTML, "<h1") {
+		t.Errorf("heading HTML = %q, want an <h1>", doc.Blocks[0].HTML)
+	}
+}
+
+func TestRenderDocMissingFile(t *testing.T) {
+	if _, err := renderDoc(filepath.Join(t.TempDir(), "nope.md")); err == nil {
+		t.Fatal("expected error for missing file, got nil")
+	}
+}

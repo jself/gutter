@@ -1,3 +1,5 @@
 module github.com/finder/gutter
 
-go 1.16
+go 1.22
+
+require github.com/yuin/goldmark v1.8.4

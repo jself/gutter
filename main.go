@@ -16,6 +16,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 )
 
 //go:embed index.html
@@ -187,6 +191,18 @@ type DiffData struct {
 	Prior    []Comment `json:"prior"`
 	PriorGen string    `json:"prior_general,omitempty"`
 	PR       *PRInfo   `json:"pr,omitempty"`
+}
+
+type DocBlock struct {
+	HTML      string `json:"html"`
+	LineStart int    `json:"line_start"`
+	LineEnd   int    `json:"line_end"`
+	Source    string `json:"source"`
+}
+
+type Doc struct {
+	Path   string     `json:"path"`
+	Blocks []DocBlock `json:"blocks"`
 }
 
 type Comment struct {
@@ -563,6 +579,103 @@ func detectVCS() (string, error) {
 		return "git", nil
 	}
 	return "", fmt.Errorf("not a jj or git repository")
+}
+
+var mdRenderer = goldmark.New()
+
+// renderDoc parses a markdown file and returns its top-level blocks, each with
+// its rendered HTML fragment and 1-based source line range.
+func renderDoc(path string) (Doc, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return Doc{}, err
+	}
+	lineStarts := computeLineStarts(src)
+	root := mdRenderer.Parser().Parse(text.NewReader(src))
+	var blocks []DocBlock
+	for n := root.FirstChild(); n != nil; n = n.NextSibling() {
+		start, end := nodeLineRange(n, lineStarts)
+		var buf bytes.Buffer
+		if err := mdRenderer.Renderer().Render(&buf, src, n); err != nil {
+			return Doc{}, err
+		}
+		source := ""
+		if start >= 1 && start <= len(lineStarts) {
+			s := lineStarts[start-1]
+			e := len(src)
+			if end < len(lineStarts) {
+				e = lineStarts[end] // start of the line after `end`
+			}
+			source = strings.TrimRight(string(src[s:e]), "\n")
+		}
+		blocks = append(blocks, DocBlock{
+			HTML:      buf.String(),
+			LineStart: start,
+			LineEnd:   end,
+			Source:    source,
+		})
+	}
+	return Doc{Path: path, Blocks: blocks}, nil
+}
+
+// computeLineStarts returns the byte offset at which each source line begins.
+func computeLineStarts(src []byte) []int {
+	starts := []int{0}
+	for i, b := range src {
+		if b == '\n' {
+			starts = append(starts, i+1)
+		}
+	}
+	return starts
+}
+
+// offsetToLine maps a byte offset to its 1-based line number.
+func offsetToLine(lineStarts []int, off int) int {
+	lo, hi := 0, len(lineStarts)-1
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if lineStarts[mid] <= off {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return lo + 1
+}
+
+// nodeLineRange returns the 1-based source line span covered by a block node,
+// derived from the text segments of the node and its descendants. Nodes with no
+// text segments (e.g. thematic breaks) fall back to line 1.
+func nodeLineRange(n ast.Node, lineStarts []int) (int, int) {
+	minOff, maxOff := -1, -1
+	var visit func(ast.Node)
+	visit = func(nd ast.Node) {
+		if nd.Type() == ast.TypeBlock {
+			if lines := nd.Lines(); lines != nil && lines.Len() > 0 {
+				for i := 0; i < lines.Len(); i++ {
+					seg := lines.At(i)
+					if minOff == -1 || seg.Start < minOff {
+						minOff = seg.Start
+					}
+					if seg.Stop > maxOff {
+						maxOff = seg.Stop
+					}
+				}
+			}
+		}
+		for c := nd.FirstChild(); c != nil; c = c.NextSibling() {
+			visit(c)
+		}
+	}
+	visit(n)
+	if minOff == -1 {
+		return 1, 1
+	}
+	endOff := maxOff - 1
+	if endOff < minOff {
+		endOff = minOff
+	}
+	return offsetToLine(lineStarts, minOff), offsetToLine(lineStarts, endOff)
 }
 
 func getDiff(vcs, rev string) (string, map[string]bool, error) {

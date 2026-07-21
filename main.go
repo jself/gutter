@@ -37,6 +37,7 @@ type Config struct {
 	Sync     bool   `json:"sync,omitempty"`
 	MD       string `json:"md,omitempty"`
 	Severity bool   `json:"severity,omitempty"`
+	Window   bool   `json:"window,omitempty"`
 }
 
 func defaultConfig() Config {
@@ -95,6 +96,9 @@ func loadConfig() Config {
 	if v := os.Getenv("GUTTER_SEVERITY"); v != "" {
 		c.Severity = v != "0" && v != "false" && v != "no"
 	}
+	if v := os.Getenv("GUTTER_WINDOW"); v != "" {
+		c.Window = v != "0" && v != "false" && v != "no"
+	}
 	return c
 }
 
@@ -140,6 +144,9 @@ func mergeConfigFile(c *Config, path string) {
 	}
 	if f.Severity {
 		c.Severity = true
+	}
+	if f.Window {
+		c.Window = true
 	}
 }
 
@@ -296,8 +303,10 @@ func main() {
 		sync      = flag.Bool("sync", cfg.Sync, "one-shot review: block until Submit, print the review to stdout, then exit (no review.md written)")
 		md        = flag.String("md", cfg.MD, "review a markdown file as a rendered document (compose with -sync)")
 		severity  = flag.Bool("severity", cfg.Severity, "show a severity dropdown on comments and emit a [SEVERITY] token on inline headings")
+		window    = flag.Bool("window", cfg.Window, "open the UI in a native desktop window (requires a window-enabled build; see README)")
 	)
 	flag.Parse()
+	_ = window
 
 	if *editorCmd == "" {
 		if _, err := exec.LookPath("code"); err == nil {

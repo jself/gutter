@@ -37,6 +37,7 @@ type Config struct {
 	Sync     bool   `json:"sync,omitempty"`
 	MD       string `json:"md,omitempty"`
 	Severity bool   `json:"severity,omitempty"`
+	Window   bool   `json:"window,omitempty"`
 }
 
 func defaultConfig() Config {
@@ -95,6 +96,9 @@ func loadConfig() Config {
 	if v := os.Getenv("GUTTER_SEVERITY"); v != "" {
 		c.Severity = v != "0" && v != "false" && v != "no"
 	}
+	if v := os.Getenv("GUTTER_WINDOW"); v != "" {
+		c.Window = v != "0" && v != "false" && v != "no"
+	}
 	return c
 }
 
@@ -140,6 +144,9 @@ func mergeConfigFile(c *Config, path string) {
 	}
 	if f.Severity {
 		c.Severity = true
+	}
+	if f.Window {
+		c.Window = true
 	}
 }
 
@@ -296,6 +303,7 @@ func main() {
 		sync      = flag.Bool("sync", cfg.Sync, "one-shot review: block until Submit, print the review to stdout, then exit (no review.md written)")
 		md        = flag.String("md", cfg.MD, "review a markdown file as a rendered document (compose with -sync)")
 		severity  = flag.Bool("severity", cfg.Severity, "show a severity dropdown on comments and emit a [SEVERITY] token on inline headings")
+		window    = flag.Bool("window", cfg.Window, "open the UI in a native desktop window (requires a window-enabled build; see README)")
 	)
 	flag.Parse()
 
@@ -592,8 +600,11 @@ func main() {
 	if *sync {
 		fmt.Fprintln(infoW, "sync:      waiting for Submit (no review.md will be written)")
 	}
+	if *window {
+		fmt.Fprintln(infoW, "window:    on")
+	}
 
-	if *open {
+	if *open && !*window {
 		go openBrowser(url)
 	}
 
@@ -611,9 +622,27 @@ func main() {
 	}
 
 	srv := &http.Server{Handler: mux}
-	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-		die("serve: %v", err)
+	serve := func() {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			die("serve: %v", err)
+		}
 	}
+
+	if *window {
+		go serve() // HTTP server runs in the background; the window owns the main thread
+		if err := openWindow(url, "gutter"); err != nil {
+			// No window support (portable build): warn and behave like a normal
+			// server run — open the browser and keep serving. This opens the
+			// browser even if -open=false was set, since -window has no other UI.
+			fmt.Fprintln(os.Stderr, "gutter: window unavailable:", err)
+			fmt.Fprintln(os.Stderr, "gutter: falling back to the browser (opening despite -open=false, if set)")
+			go openBrowser(url)
+			select {} // block forever; the server goroutine keeps handling requests
+		}
+		os.Exit(0) // window closed
+	}
+
+	serve() // non-window: blocks on the main goroutine as before
 }
 
 func detectVCS() (string, error) {

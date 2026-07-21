@@ -357,3 +357,37 @@ func TestLoadPriorSeverityWithLeft(t *testing.T) {
 		t.Fatalf("got %+v, want side=old severity=NITPICK", got)
 	}
 }
+
+func TestLoadConfigWindowEnv(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("GUTTER_WINDOW", "1")
+	if got := loadConfig(); !got.Window {
+		t.Errorf("GUTTER_WINDOW=1 should set Window")
+	}
+	t.Setenv("GUTTER_WINDOW", "false")
+	if got := loadConfig(); got.Window {
+		t.Errorf("GUTTER_WINDOW=false should be false")
+	}
+}
+
+func TestMergeConfigFileWindowOR(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "c.json")
+	if err := os.WriteFile(p, []byte(`{"window":true}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	c := Config{Window: false}
+	mergeConfigFile(&c, p)
+	if !c.Window {
+		t.Errorf("window:true in file should set Window")
+	}
+	p2 := filepath.Join(dir, "c2.json")
+	if err := os.WriteFile(p2, []byte(`{"port":1}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	c2 := Config{Window: true}
+	mergeConfigFile(&c2, p2)
+	if !c2.Window {
+		t.Errorf("missing window key must not clear Window")
+	}
+}

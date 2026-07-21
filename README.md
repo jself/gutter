@@ -89,6 +89,7 @@ that have been addressed, add new ones, and save again.
 | `-collapse <n>` | `80` | Auto-collapse files with more than N changed lines. `0` disables. |
 | `-editor "<tmpl>"` | auto-detected | Editor command template — see below. |
 | `-severity` | `false` | Show a severity dropdown on inline comments and emit a trailing `[SEVERITY]` token on inline headings. See [Comment severity](#comment-severity). |
+| `-window` | `false` | Open the UI in a native desktop window instead of a browser. Requires a window-enabled build. See [Native window](#native-window). |
 
 ## Configuration
 
@@ -112,6 +113,7 @@ config (`$XDG_CONFIG_HOME/gutter/config.json`, falling back to
 | `GUTTER_EDITOR` | `-editor` |
 | `GUTTER_COLLAPSE` | `-collapse` |
 | `GUTTER_SEVERITY` | `-severity` (`true` / `false`) |
+| `GUTTER_WINDOW` | `-window` (`true` / `false`) |
 
 ### Config file
 
@@ -127,7 +129,8 @@ config (`$XDG_CONFIG_HOME/gutter/config.json`, falling back to
   "editor": "nvim --server /tmp/nvim.sock --remote-send ':e {file}<CR>:{line}<CR>'",
   "collapse": 120,
   "open": true,
-  "severity": false
+  "severity": false,
+  "window": false
 }
 ```
 
@@ -320,6 +323,24 @@ This is aimed at tooling that consumes `gutter -sync` output and wants to
 triage by severity — e.g. a centaur-review pipeline that only auto-applies
 `NITPICK`/`SUGGESTION` comments but stops for human input on `BLOCKING` ones.
 
+### Native window
+
+`-window` opens the review UI in a native desktop window (via
+[`webview_go`](https://github.com/webview/webview_go)) instead of a browser
+tab. It composes with everything else — `-md`, `-severity`, `-sync` all work
+the same inside the window:
+
+```
+gutter -window
+gutter -window -sync -md docs/plan.md
+```
+
+This requires a **window-enabled build** (see [Building](#building) below).
+If you run `-window` on a portable build (no window support compiled in),
+gutter prints a warning to stderr and falls back to opening the browser, so
+scripts and aliases don't break across machines — the flag just becomes a
+no-op.
+
 ### Revset examples
 
 #### git
@@ -346,13 +367,39 @@ triage by severity — e.g. a centaur-review pipeline that only auto-applies
 
 - For headless workflows, `-open=false -port 8080` gives a stable URL.
 
-## Build from source
+## Building
 
 ```
-make build       # produces ./gutter
+make build       # window-enabled build, produces ./gutter
+make install     # window-enabled build, installs to $HOME/.local/bin/gutter
 make run         # build and run
 make clean
 ```
+
+`make build`/`make install` are the **default, window-enabled** targets:
+they build with cgo and the `webview` tag, and require a system webview —
+WebKit2GTK + GTK3 on Linux, the system WebKit on macOS, the WebView2 runtime
+on Windows. On Linux, the build goes through `scripts/build-window.sh`,
+which adds `-tags webview` and, on distros that only ship
+`webkit2gtk-4.1` (Arch, modern Fedora/Ubuntu — `webview_go` is pinned to
+`webkit2gtk-4.0`), automatically shims the pkg-config dependency from 4.0 to
+4.1. So `make build` just works on current Linux without any manual
+pkg-config setup, and unmodified on distros that do have `webkit2gtk-4.0`.
+
+If you don't have (or don't want) a system webview, use the portable
+targets instead — pure Go, `CGO_ENABLED=0`, no cgo/WebKit, and
+cross-compilable:
+
+```
+make build-portable                          # produces ./gutter, no cgo
+GOOS=linux GOARCH=amd64 make build-portable   # cross-compile
+make install-portable
+```
+
+`-window` on a portable binary warns and falls back to the browser (see
+[Native window](#native-window)). Use the portable targets for releases and
+for WebKit-less machines. `go test ./...` needs neither cgo nor WebKit — it
+compiles against the pure-Go stub either way.
 
 ## License
 

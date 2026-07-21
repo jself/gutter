@@ -151,3 +151,41 @@ func TestLoadPriorIgnoresPRBlock(t *testing.T) {
 		t.Errorf("comments = %+v, want one c.go:7 comment", got)
 	}
 }
+
+func TestMergeConfigFileSyncOR(t *testing.T) {
+	dir := t.TempDir()
+
+	// A file with sync:true sets it.
+	p1 := filepath.Join(dir, "on.json")
+	if err := os.WriteFile(p1, []byte(`{"sync":true}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	c := Config{Sync: false}
+	mergeConfigFile(&c, p1)
+	if !c.Sync {
+		t.Errorf("sync:true in file should set Sync, got false")
+	}
+
+	// A file WITHOUT the sync key must not clear an already-true value.
+	p2 := filepath.Join(dir, "other.json")
+	if err := os.WriteFile(p2, []byte(`{"port":123}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	c2 := Config{Sync: true}
+	mergeConfigFile(&c2, p2)
+	if !c2.Sync {
+		t.Errorf("missing sync key must not clear Sync; got false")
+	}
+}
+
+func TestLoadConfigSyncEnv(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // isolate from real user config
+	t.Setenv("GUTTER_SYNC", "1")
+	if got := loadConfig(); !got.Sync {
+		t.Errorf("GUTTER_SYNC=1 should yield Sync=true")
+	}
+	t.Setenv("GUTTER_SYNC", "false")
+	if got := loadConfig(); got.Sync {
+		t.Errorf("GUTTER_SYNC=false should yield Sync=false")
+	}
+}

@@ -3,14 +3,15 @@ BIN := $(PREFIX)/bin/gutter
 
 .PHONY: build install build-portable install-portable clean run
 
-# Default build includes the native window (needs cgo + a system webview).
-# Linux: WebKit2GTK 4.1 via -tags 'webview webkit2_41' (drop webkit2_41 on 4.0
-# systems; macOS/Windows need only -tags webview).
+# Default build includes the native window (needs cgo + a system webview:
+# WebKit2GTK on Linux, WebKit on macOS, WebView2 on Windows). scripts/build-window.sh
+# adds the `webview` tag and, on Linux systems that ship only webkit2gtk-4.1,
+# shims the webview_go pkg-config dependency from 4.0 to 4.1.
 build:
-	CGO_ENABLED=1 go build -tags 'webview webkit2_41' -o gutter .
+	./scripts/build-window.sh -o gutter .
 
 install:
-	CGO_ENABLED=1 go build -tags 'webview webkit2_41' -o $(BIN) .
+	./scripts/build-window.sh -o $(BIN) .
 	@echo "installed $(BIN)"
 
 # Portable build: pure Go, no cgo/WebKit, cross-compilable. -window falls back

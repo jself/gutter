@@ -306,7 +306,6 @@ func main() {
 		window    = flag.Bool("window", cfg.Window, "open the UI in a native desktop window (requires a window-enabled build; see README)")
 	)
 	flag.Parse()
-	_ = window
 
 	if *editorCmd == "" {
 		if _, err := exec.LookPath("code"); err == nil {
@@ -601,8 +600,11 @@ func main() {
 	if *sync {
 		fmt.Fprintln(infoW, "sync:      waiting for Submit (no review.md will be written)")
 	}
+	if *window {
+		fmt.Fprintln(infoW, "window:    on")
+	}
 
-	if *open {
+	if *open && !*window {
 		go openBrowser(url)
 	}
 
@@ -620,9 +622,25 @@ func main() {
 	}
 
 	srv := &http.Server{Handler: mux}
-	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-		die("serve: %v", err)
+	serve := func() {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			die("serve: %v", err)
+		}
 	}
+
+	if *window {
+		go serve() // HTTP server runs in the background; the window owns the main thread
+		if err := openWindow(url, "gutter"); err != nil {
+			// No window support (portable build): warn and behave like a normal
+			// server run — open the browser and keep serving.
+			fmt.Fprintln(os.Stderr, "gutter: window unavailable:", err)
+			go openBrowser(url)
+			select {} // block forever; the server goroutine keeps handling requests
+		}
+		os.Exit(0) // window closed
+	}
+
+	serve() // non-window: blocks on the main goroutine as before
 }
 
 func detectVCS() (string, error) {

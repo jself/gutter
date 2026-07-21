@@ -56,8 +56,8 @@ func TestRenderMarkdownPRBlock(t *testing.T) {
 		"- base: def456",
 		"local working tree is NOT the PR's code",
 		"gh pr diff 123",
-		"### a.go:10\n",        // new side: no suffix
-		"### b.go:5 (LEFT)\n",  // old side: suffix
+		"### a.go:10 [QUESTION]\n",       // new side: no LEFT suffix
+		"### b.go:5 (LEFT) [QUESTION]\n", // old side: LEFT suffix
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("rendered markdown missing %q\n---\n%s", want, md)
@@ -112,8 +112,8 @@ func TestRenderMarkdownLocalUnchanged(t *testing.T) {
 	if !strings.Contains(md, "# Review of `@` (jj)") {
 		t.Errorf("local title changed:\n%s", md)
 	}
-	if !strings.Contains(md, "### a.go:10\n") {
-		t.Errorf("new-side anchor should have no suffix:\n%s", md)
+	if !strings.Contains(md, "### a.go:10 [QUESTION]\n") {
+		t.Errorf("new-side anchor should have no LEFT suffix:\n%s", md)
 	}
 }
 
@@ -278,5 +278,71 @@ func TestRenderDoc(t *testing.T) {
 func TestRenderDocMissingFile(t *testing.T) {
 	if _, err := renderDoc(filepath.Join(t.TempDir(), "nope.md")); err == nil {
 		t.Fatal("expected error for missing file, got nil")
+	}
+}
+
+func TestRenderMarkdownSeverity(t *testing.T) {
+	req := SaveRequest{Comments: []Comment{
+		{Path: "a.go", Side: "new", Line: 5, Severity: "IMPORTANT", Body: "x"},
+		{Path: "b.go", Side: "new", Line: 8, Body: "y"}, // empty -> QUESTION
+		{Path: "c.go", Side: "new", Line: 10, EndLine: 12, Severity: "SUGGESTION", Body: "z"},
+	}}
+	md := renderMarkdown("", "git", "", nil, req)
+	for _, want := range []string{
+		"### a.go:5 [IMPORTANT]\n",
+		"### b.go:8 [QUESTION]\n",
+		"### c.go:10-12 [SUGGESTION]\n",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("missing %q\n---\n%s", want, md)
+		}
+	}
+}
+
+func TestRenderMarkdownSeverityAfterLeft(t *testing.T) {
+	pr := &PRInfo{Repo: "o/r", Number: 1, Head: "h", Base: "b"}
+	req := SaveRequest{Comments: []Comment{{Path: "c.go", Side: "old", Line: 7, Severity: "NITPICK", Body: "z"}}}
+	md := renderMarkdown("", "git", "", pr, req)
+	if !strings.Contains(md, "### c.go:7 (LEFT) [NITPICK]\n") {
+		t.Errorf("severity should follow (LEFT):\n%s", md)
+	}
+}
+
+func TestLoadPriorSeverityRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "review.md")
+	req := SaveRequest{Comments: []Comment{{Path: "a.go", Side: "new", Line: 5, Severity: "SUGGESTION", Body: "s"}}}
+	if err := os.WriteFile(path, []byte(renderMarkdown("", "git", "", nil, req)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := loadPrior(path)
+	if len(got) != 1 || got[0].Severity != "SUGGESTION" {
+		t.Fatalf("round-trip severity = %+v, want SUGGESTION", got)
+	}
+}
+
+func TestLoadPriorSeverityLegacyDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "review.md")
+	legacy := "# Review of `@` (jj)\n\n## Inline comments\n\n### a.go:5\n\nbody\n\n"
+	if err := os.WriteFile(path, []byte(legacy), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := loadPrior(path)
+	if len(got) != 1 || got[0].Severity != "QUESTION" {
+		t.Fatalf("legacy severity = %+v, want QUESTION default", got)
+	}
+}
+
+func TestLoadPriorSeverityWithLeft(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "review.md")
+	src := "# R\n\n## Inline comments\n\n### a.go:7 (LEFT) [NITPICK]\n\nbody\n\n"
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := loadPrior(path)
+	if len(got) != 1 || got[0].Side != "old" || got[0].Severity != "NITPICK" {
+		t.Fatalf("got %+v, want side=old severity=NITPICK", got)
 	}
 }

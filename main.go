@@ -220,6 +220,7 @@ type Comment struct {
 	EndLine  int    `json:"end_line,omitempty"`
 	Snippet  string `json:"snippet"`
 	Body     string `json:"body"`
+	Severity string `json:"severity,omitempty"`
 }
 
 type SaveRequest struct {
@@ -925,6 +926,11 @@ func renderMarkdown(rev, vcs, docPath string, pr *PRInfo, req SaveRequest) strin
 			if pr != nil && c.Side == "old" {
 				loc += " (LEFT)"
 			}
+			sev := c.Severity
+			if sev == "" {
+				sev = "QUESTION"
+			}
+			loc += " [" + sev + "]"
 			fmt.Fprintf(&b, "### %s\n\n", loc)
 			if strings.TrimSpace(c.Snippet) != "" {
 				b.WriteString("```\n")
@@ -944,7 +950,7 @@ func renderMarkdown(rev, vcs, docPath string, pr *PRInfo, req SaveRequest) strin
 	return b.String()
 }
 
-var inlineHeaderRe = regexp.MustCompile(`^###\s+(.+?):(\d+)(?:-(\d+))?(?:\s+\((LEFT)\))?\s*$`)
+var inlineHeaderRe = regexp.MustCompile(`^###\s+(.+?):(\d+)(?:-(\d+))?(?:\s+\((LEFT)\))?(?:\s+\[([A-Z]+)\])?\s*$`)
 var tokenRe = regexp.MustCompile(`[A-Za-z_][A-Za-z_0-9]*|\s+|.`)
 
 func tokenize(s string) []string {
@@ -1130,7 +1136,11 @@ func loadPrior(path string) ([]Comment, string) {
 				if m[4] == "LEFT" {
 					side = "old"
 				}
-				cur = &Comment{Path: m[1], Side: side, Line: start, EndLine: end}
+				sev := m[5]
+				if sev == "" {
+					sev = "QUESTION"
+				}
+				cur = &Comment{Path: m[1], Side: side, Line: start, EndLine: end, Severity: sev}
 				continue
 			}
 			if cur != nil {

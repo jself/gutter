@@ -26,18 +26,22 @@ import (
 //go:embed fonts/jetbrains-mono-latin-400.woff2
 var assets embed.FS
 
+// fontBytes is the embedded JetBrains Mono woff2, read once at startup.
+var fontBytes, _ = assets.ReadFile("fonts/jetbrains-mono-latin-400.woff2")
+
 // fontHandler serves the embedded JetBrains Mono woff2 so the UI font works
 // offline (no CDN), including in the native window.
 func fontHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, err := assets.ReadFile("fonts/jetbrains-mono-latin-400.woff2")
-		if err != nil {
+		if len(fontBytes) == 0 {
 			http.Error(w, "font not found", 404)
 			return
 		}
 		w.Header().Set("Content-Type", "font/woff2")
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		w.Write(b)
+		// Cache within a session, but not "immutable"/1yr: the path is unversioned,
+		// so a font swap in a later gutter build should be picked up promptly.
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		w.Write(fontBytes)
 	})
 }
 

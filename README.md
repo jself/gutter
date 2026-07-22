@@ -1,8 +1,6 @@
 # gutter
 
-> **Note:** this was vibe-coded end-to-end with an AI agent (Claude). I'm
-> publishing it because it's useful. Use at your own risk and feel free to
-> fork/rewrite.
+> **Note:** this project was highly vibe-coded. Use at your own risk.
 
 A local diff-review tool for collaborating with AI coding agents.
 

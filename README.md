@@ -37,6 +37,8 @@ Works with both [jj](https://github.com/jj-vcs/jj) and git.
 - Output is plain markdown — easy to diff, easy for an agent to parse
 - Re-running on the same revset reloads existing review notes as "prior
   comments", so you can iterate
+- Resolve/unresolve a comment without deleting it — resolved state persists
+  in `review.md` across iterations
 
 ## Install
 
@@ -78,8 +80,9 @@ codex "read review.md and …"
 ```
 
 After the agent edits the code, re-run `gutter` — your previous comments load
-with an amber "prior" tag so you can tell what's old vs new. Delete the ones
-that have been addressed, add new ones, and save again.
+with an amber **PRIOR** badge so you can tell what's old vs new. Mark the ones
+that have been addressed as **Resolved** (or delete them outright), add new
+ones, and save again.
 
 ## Flags
 
@@ -198,6 +201,18 @@ reattaches each comment to its line. Comments whose lines no longer exist
 (because the code was rewritten) appear in an "unattached prior comments"
 panel at the top so you don't lose them.
 
+Both severity and resolved state ride on the inline-comment heading, in a
+fixed order — `### path:line-end (LEFT) [SEVERITY] (resolved)` — with each
+token optional and independently backward-compatible. A fully-decorated
+heading looks like:
+
+```
+### src/app.ts:53 [SUGGESTION] (resolved)
+```
+
+See [Comment severity](#comment-severity) and
+[Resolving comments](#resolving-comments) for details on each token.
+
 ## UI cheatsheet
 
 - Click a line number to comment on that line; click-and-drag to comment on
@@ -207,6 +222,9 @@ panel at the top so you don't lose them.
   it if it was collapsed); click again or "show all files" to clear.
 - `☰` toggles the sidebar; `🌙`/`☀` toggles the theme; both persist.
 - A 💬 marker on a line number means you've already commented on that line.
+- Each saved comment has **Resolve**/**Unresolve** next to edit/delete —
+  resolving greys the comment out and strikes through its heading without
+  deleting it. See [Resolving comments](#resolving-comments).
 - The `[ − 100% + ]` control in the header zooms the whole UI; `Ctrl/Cmd +`,
   `Ctrl/Cmd -`, `Ctrl/Cmd 0` do the same from the keyboard. See
   [Typography and zoom](#typography-and-zoom).
@@ -333,6 +351,25 @@ earlier `-severity` run are dropped from `review.md` on the next save — keep
 This is aimed at tooling that consumes `gutter -sync` output and wants to
 triage by severity — e.g. a centaur-review pipeline that only auto-applies
 `NITPICK`/`SUGGESTION` comments but stops for human input on `BLOCKING` ones.
+
+### Resolving comments
+
+Every saved comment has a **Resolve** button next to edit/delete. Resolving
+doesn't delete the comment — it stays visible but greyed out with a
+struck-through heading, so you (or the agent) can see what's been handled
+without losing the record. Click **Unresolve** to bring it back to normal.
+
+Resolved state round-trips through `review.md` as a trailing `(resolved)`
+marker on the comment's heading, after any `(LEFT)`/`[SEVERITY]` tokens:
+
+```
+### src/app.ts:53 [SUGGESTION] (resolved)
+```
+
+This means an agent re-reading `review.md` across iterations can skip
+comments already marked `(resolved)` and focus on what's still open. As with
+severity, older headings without the marker still parse fine (as
+unresolved).
 
 ### Native window
 

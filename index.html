@@ -31,6 +31,10 @@
     --del-overlay: rgba(248, 81, 73, 0.45);
     --panel-strong: #1c2128;
     --panel-deep: #0b1018;
+    --comment: #39c5c8;
+    --comment-fg: #4fd6d9;
+    --comment-bg: #12201f;
+    --comment-shadow: rgba(0, 0, 0, 0.4);
   }
   html[data-theme="light"] {
     --bg: #ffffff;
@@ -48,6 +52,10 @@
     --del-overlay: rgba(207, 34, 46, 0.25);
     --panel-strong: #eaeef2;
     --panel-deep: #f6f8fa;
+    --comment: #0e9aa0;
+    --comment-fg: #0e7490;
+    --comment-bg: #ecfbfb;
+    --comment-shadow: rgba(0, 0, 0, 0.12);
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: 14px; }
@@ -116,11 +124,13 @@
   .comment-form button { background: var(--accent); color: #fff; border: 0; padding: 4px 10px; border-radius: 4px; cursor: pointer; font: inherit; }
   .comment-form button.cancel { background: transparent; border: 1px solid var(--border); color: var(--text); }
   select.severity { display: block; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; font: inherit; margin-bottom: 6px; }
-  .saved-comment .loc .sev { color: var(--accent); font-weight: 600; }
-  .saved-comment { color: var(--text); }
+  .saved-comment { color: var(--text); background: var(--comment-bg); border: 1px solid var(--border); border-left: 3px solid var(--comment); border-radius: 6px; padding: 10px 14px; box-shadow: 0 2px 10px var(--comment-shadow); }
   .saved-comment .body { white-space: pre-wrap; line-height: 1.5; max-width: 68ch; }
-  .saved-comment .loc { color: var(--muted); margin-bottom: 4px; }
-  .saved-comment .controls { margin-top: 6px; }
+  .saved-comment .loc { display: flex; align-items: center; gap: 6px; color: var(--comment-fg); font-weight: 600; margin-bottom: 4px; }
+  .saved-comment .loc .badges { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+  .saved-comment .loc .sev { font-weight: 700; font-size: 10px; letter-spacing: 0.4px; text-transform: uppercase; padding: 1px 7px; border-radius: 3px; border: 1px solid var(--border); color: var(--muted); }
+  .saved-comment .loc .prior-badge { font-weight: 700; font-size: 10px; letter-spacing: 0.4px; text-transform: uppercase; padding: 1px 7px; border-radius: 3px; border: 1px solid #d29922; color: #e3b341; }
+  .saved-comment .controls { margin-top: 8px; }
   .saved-comment .controls button { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; border-radius: 3px; cursor: pointer; font: inherit; font-size: 11px; margin-right: 4px; }
   .general { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 18px; }
   .general label { display: block; color: var(--muted); margin-bottom: 6px; }
@@ -133,10 +143,12 @@
   td.text code.hljs { background: transparent !important; padding: 0; font-family: var(--font-mono); font-size: inherit; }
   td.text code { background: transparent; padding: 0; }
   /* Prior-comment marker */
-  .saved-comment.prior { border-left: 3px solid #d29922; padding-left: 8px; margin-left: -8px; }
-  .saved-comment.prior .loc::after { content: " · prior"; color: #d29922; font-size: 11px; }
+  .saved-comment.prior { border-left-color: #d29922; }
+  .saved-comment.prior .loc { color: #e3b341; }
+  .saved-comment.resolved { opacity: 0.6; }
+  .saved-comment.resolved .loc { text-decoration: line-through; }
   /* Comment indicator on line number */
-  td.ln.has-comment { background: var(--selected); color: var(--accent); position: relative; }
+  td.ln.has-comment { background: var(--comment); color: var(--bg); position: relative; }
   td.ln.has-comment::after { content: "💬"; font-size: 9px; position: absolute; right: 1px; top: 0; }
   /* Modal */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 100; }
@@ -152,13 +164,13 @@
   .doc-block { position: relative; padding: 2px 10px; border-radius: 4px; cursor: pointer; }
   .doc-block:hover { background: var(--panel); }
   .doc-block.selected { background: var(--selected); }
-  .doc-block.has-comment-block { box-shadow: inset 3px 0 0 var(--accent); }
+  .doc-block.has-comment-block { box-shadow: inset 3px 0 0 var(--comment); }
   .doc-block h1, .doc-block h2, .doc-block h3 { margin: 0.6em 0 0.3em; }
   .doc-block p, .doc-block ul, .doc-block ol { margin: 0.4em 0; line-height: 1.5; }
   .doc-block pre { background: var(--panel-deep); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
   .doc-block pre, .doc-block pre code, .doc-block code { font-family: var(--font-mono); }
   .doc-block :not(pre) > code { background: var(--panel-deep); padding: 1px 4px; border-radius: 3px; }
-  .doc-saved-comment { max-width: 860px; margin: 2px auto 8px; }
+  .doc-saved-comment { max-width: 820px; margin: 8px auto 16px; }
   .doc-comment-form { max-width: 860px; margin: 4px auto; }
 </style>
 </head>
@@ -234,6 +246,15 @@ function severityOptionsHTML(selected) {
 function severitySelectHTML() {
   return SEVERITY_MODE ? `<select class="severity">${severityOptionsHTML('QUESTION')}</select>` : '';
 }
+function badgesHTML(c) {
+  const sev = SEVERITY_MODE ? `<span class="sev">${escapeHtml(c.severity || 'QUESTION')}</span>` : '';
+  const prior = c.prior ? `<span class="prior-badge">prior</span>` : '';
+  return (sev || prior) ? `<span class="badges">${sev}${prior}</span>` : '';
+}
+function resolveBtnHTML(c) {
+  const a = c.resolved ? 'unresolve' : 'resolve';
+  return `<button type="button" data-id="${c.id}" data-action="${a}">${a}</button>`;
+}
 let activeFileFilter = null; // path or null
 let textFilter = '';
 
@@ -252,6 +273,7 @@ async function load() {
         snippet: c.snippet || '',
         body: c.body,
         severity: c.severity || 'QUESTION',
+        resolved: c.resolved || false,
         prior: true,
       });
     }
@@ -609,10 +631,11 @@ function renderDocComments() {
     const div = document.createElement('div');
     div.className = 'doc-saved-comment';
     div.innerHTML = `
-      <div class="saved-comment ${c.prior ? 'prior' : ''}">
-        <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}${SEVERITY_MODE ? ` <span class="sev">${escapeHtml(c.severity || 'QUESTION')}</span>` : ''}</div>
+      <div class="saved-comment ${c.prior ? 'prior' : ''} ${c.resolved ? 'resolved' : ''}">
+        <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}${badgesHTML(c)}</div>
         <div class="body">${escapeHtml(c.body)}</div>
         <div class="controls">
+          ${resolveBtnHTML(c)}
           <button type="button" data-id="${c.id}" data-action="edit">edit</button>
           <button type="button" data-id="${c.id}" data-action="del">delete</button>
         </div>
@@ -625,6 +648,7 @@ function renderDocComments() {
         if (idx < 0) return;
         if (action === 'del') { COMMENTS.splice(idx, 1); renderComments(); }
         else if (action === 'edit') { openEditModal(COMMENTS[idx]); }
+        else if (action === 'resolve' || action === 'unresolve') { COMMENTS[idx].resolved = (action === 'resolve'); renderComments(); }
       });
     });
   });
@@ -759,10 +783,11 @@ function renderComments() {
     const openBtn = HAS_EDITOR ? `<button type="button" class="open-btn" data-id="${c.id}" data-action="open">open</button>` : '';
     tr.innerHTML = `
       <td colspan="3">
-        <div class="saved-comment ${c.prior ? 'prior' : ''}">
-          <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}${SEVERITY_MODE ? ` <span class="sev">${escapeHtml(c.severity || 'QUESTION')}</span>` : ''}</div>
+        <div class="saved-comment ${c.prior ? 'prior' : ''} ${c.resolved ? 'resolved' : ''}">
+          <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}${badgesHTML(c)}</div>
           <div class="body">${escapeHtml(c.body)}</div>
           <div class="controls">
+            ${resolveBtnHTML(c)}
             <button type="button" data-id="${c.id}" data-action="edit">edit</button>
             <button type="button" data-id="${c.id}" data-action="del">delete</button>
             ${openBtn}
@@ -784,6 +809,9 @@ function renderComments() {
           openEditModal(COMMENTS[idx]);
         } else if (action === 'open') {
           openInEditor(COMMENTS[idx].path, COMMENTS[idx].line);
+        } else if (action === 'resolve' || action === 'unresolve') {
+          COMMENTS[idx].resolved = (action === 'resolve');
+          renderComments();
         }
       });
     });
@@ -808,10 +836,11 @@ function renderUnattached(list) {
     list.map(c => {
       const range = c.end_line && c.end_line !== c.line ? '-' + c.end_line : '';
       return `<div style="padding: 10px 12px; border-top: 1px solid var(--border);">
-        <div class="saved-comment prior">
-          <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}${SEVERITY_MODE ? ` <span class="sev">${escapeHtml(c.severity || 'QUESTION')}</span>` : ''}</div>
+        <div class="saved-comment prior${c.resolved ? ' resolved' : ''}">
+          <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}${badgesHTML(c)}</div>
           <div class="body">${escapeHtml(c.body)}</div>
           <div class="controls">
+            ${resolveBtnHTML(c)}
             <button type="button" data-id="${c.id}" data-action="edit">edit</button>
             <button type="button" data-id="${c.id}" data-action="del">delete</button>
           </div>
@@ -826,6 +855,7 @@ function renderUnattached(list) {
       if (idx < 0) return;
       if (action === 'del') { COMMENTS.splice(idx, 1); renderComments(); }
       else if (action === 'edit') { openEditModal(COMMENTS[idx]); }
+      else if (action === 'resolve' || action === 'unresolve') { COMMENTS[idx].resolved = (action === 'resolve'); renderComments(); }
     });
   });
 }

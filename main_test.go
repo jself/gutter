@@ -407,3 +407,65 @@ func TestFontAssetServed(t *testing.T) {
 		t.Errorf("body too small: %d bytes", w.Body.Len())
 	}
 }
+
+func TestRenderMarkdownResolved(t *testing.T) {
+	req := SaveRequest{Comments: []Comment{
+		{Path: "a.go", Side: "new", Line: 5, Severity: "IMPORTANT", Resolved: true, Body: "x"},
+		{Path: "b.go", Side: "new", Line: 8, Body: "y"}, // not resolved
+	}}
+	md := renderMarkdown("", "git", "", true, nil, req)
+	if !strings.Contains(md, "### a.go:5 [IMPORTANT] (resolved)\n") {
+		t.Errorf("resolved marker missing/misordered:\n%s", md)
+	}
+	if strings.Contains(md, "### b.go:8 [QUESTION] (resolved)") {
+		t.Errorf("non-resolved comment must not get the marker:\n%s", md)
+	}
+}
+
+func TestRenderMarkdownResolvedUngatedBySeverity(t *testing.T) {
+	// resolved marker emits even when -severity is off (no [SEVERITY] token)
+	req := SaveRequest{Comments: []Comment{{Path: "a.go", Side: "new", Line: 5, Resolved: true, Body: "x"}}}
+	md := renderMarkdown("", "git", "", false, nil, req)
+	if !strings.Contains(md, "### a.go:5 (resolved)\n") {
+		t.Errorf("resolved marker should emit without -severity:\n%s", md)
+	}
+}
+
+func TestLoadPriorResolvedRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "review.md")
+	req := SaveRequest{Comments: []Comment{{Path: "a.go", Side: "new", Line: 5, Severity: "SUGGESTION", Resolved: true, Body: "s"}}}
+	if err := os.WriteFile(path, []byte(renderMarkdown("", "git", "", true, nil, req)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := loadPrior(path)
+	if len(got) != 1 || !got[0].Resolved {
+		t.Fatalf("resolved round-trip = %+v, want Resolved true", got)
+	}
+}
+
+func TestLoadPriorResolvedWithLeftAndSeverity(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "review.md")
+	src := "# R\n\n## Inline comments\n\n### a.go:7 (LEFT) [NITPICK] (resolved)\n\nbody\n\n"
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := loadPrior(path)
+	if len(got) != 1 || got[0].Side != "old" || got[0].Severity != "NITPICK" || !got[0].Resolved {
+		t.Fatalf("got %+v, want side=old severity=NITPICK resolved=true", got)
+	}
+}
+
+func TestLoadPriorLegacyNotResolved(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "review.md")
+	src := "# R\n\n## Inline comments\n\n### a.go:5\n\nbody\n\n"
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := loadPrior(path)
+	if len(got) != 1 || got[0].Resolved {
+		t.Fatalf("legacy heading must parse Resolved=false, got %+v", got)
+	}
+}

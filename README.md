@@ -90,6 +90,7 @@ that have been addressed, add new ones, and save again.
 | `-editor "<tmpl>"` | auto-detected | Editor command template — see below. |
 | `-severity` | `false` | Show a severity dropdown on inline comments and emit a trailing `[SEVERITY]` token on inline headings. See [Comment severity](#comment-severity). |
 | `-window` | `false` | Open the UI in a native desktop window instead of a browser. Requires a window-enabled build. See [Native window](#native-window). |
+| `-version` | | Print the version and exit. |
 
 ## Configuration
 
@@ -400,6 +401,23 @@ make install-portable
 [Native window](#native-window)). Use the portable targets for releases and
 for WebKit-less machines. `go test ./...` needs neither cgo nor WebKit — it
 compiles against the pure-Go stub either way.
+
+### Prebuilt releases
+
+`make release` cross-builds the portable (browser-mode) binary for
+linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, and windows/amd64 into
+`dist/`, alongside a `SHA256SUMS` file:
+
+```
+make release                  # dist/gutter-<version>-<os>-<arch> + SHA256SUMS
+make release VERSION=v1.2.3   # override the stamped version
+```
+
+The version defaults to `git describe` (a short commit hash when there are no
+tags) and is stamped into the binary — check it with `gutter -version`. These
+are browser-mode binaries; for the native window on Linux, build from source
+with `make build` (macOS/Windows window builds must likewise be built on their
+own platform, since the webview needs cgo + a system webview).
 
 ## License
 

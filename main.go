@@ -25,6 +25,10 @@ import (
 //go:embed index.html
 var assets embed.FS
 
+// version is stamped at build time via -ldflags "-X main.version=…" (see the
+// Makefile). It defaults to "dev" for a plain `go build`.
+var version = "dev"
+
 type Config struct {
 	Rev      string `json:"rev,omitempty"`
 	Output   string `json:"output,omitempty"`
@@ -303,9 +307,15 @@ func main() {
 		sync      = flag.Bool("sync", cfg.Sync, "one-shot review: block until Submit, print the review to stdout, then exit (no review.md written)")
 		md        = flag.String("md", cfg.MD, "review a markdown file as a rendered document (compose with -sync)")
 		severity  = flag.Bool("severity", cfg.Severity, "show a severity dropdown on comments and emit a [SEVERITY] token on inline headings")
-		window    = flag.Bool("window", cfg.Window, "open the UI in a native desktop window (requires a window-enabled build; see README)")
+		window      = flag.Bool("window", cfg.Window, "open the UI in a native desktop window (requires a window-enabled build; see README)")
+		showVersion = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("gutter", version)
+		return
+	}
 
 	if *editorCmd == "" {
 		if _, err := exec.LookPath("code"); err == nil {

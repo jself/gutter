@@ -58,6 +58,10 @@
   header button { background: var(--accent); color: #fff; border: 0; padding: 6px 14px; border-radius: 4px; cursor: pointer; font: inherit; font-weight: 600; }
   header button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
   header button:hover { filter: brightness(1.1); }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .seg button { background: transparent; border: 0; color: var(--text); padding: 4px 11px; cursor: pointer; font: inherit; }
+  .seg button:hover { background: var(--selected); }
+  .seg .pct { border-left: 1px solid var(--border); border-right: 1px solid var(--border); color: var(--muted); min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; }
   .layout { display: flex; align-items: flex-start; }
   .layout.sidebar-hidden aside.sidebar { display: none; }
   aside.sidebar { position: sticky; top: 41px; width: 280px; flex-shrink: 0; max-height: calc(100vh - 41px); overflow: auto; padding: 14px 8px 14px 14px; border-right: 1px solid var(--border); }
@@ -166,6 +170,11 @@
   {{if not .Sync}}<div class="out">→ {{.Out}}</div>{{end}}
   <div class="spacer"></div>
   <span id="status" class="status"></span>
+  <div class="seg" title="Zoom (Ctrl +/-/0)">
+    <button type="button" id="zoomOut" title="Zoom out (Ctrl -)">−</button>
+    <button type="button" class="pct" id="zoomPct" title="Reset zoom (Ctrl 0)">100%</button>
+    <button type="button" id="zoomIn" title="Zoom in (Ctrl +)">+</button>
+  </div>
   <button class="secondary" id="themeToggle" title="Toggle light/dark" style="padding: 4px 10px;">🌙</button>
   {{if .Sync}}
   <button id="submitBtn" onclick="submit_review()">Submit</button>
@@ -466,6 +475,28 @@ document.getElementById('themeToggle').addEventListener('click', () => {
   const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
   applyTheme(next);
   try { localStorage.setItem('gutter_theme', next); } catch (e) {}
+});
+
+const ZOOM_MIN = 0.7, ZOOM_MAX = 2.0, ZOOM_STEP = 0.1;
+let zoom = (() => {
+  const v = parseFloat((() => { try { return localStorage.getItem('gutter_zoom'); } catch (e) { return null; } })());
+  return (v >= ZOOM_MIN && v <= ZOOM_MAX) ? v : 1.0;
+})();
+function applyZoom(level) {
+  zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(level * 10) / 10));
+  document.body.style.zoom = zoom;
+  document.getElementById('zoomPct').textContent = Math.round(zoom * 100) + '%';
+  try { localStorage.setItem('gutter_zoom', String(zoom)); } catch (e) {}
+}
+applyZoom(zoom);
+document.getElementById('zoomIn').addEventListener('click', () => applyZoom(zoom + ZOOM_STEP));
+document.getElementById('zoomOut').addEventListener('click', () => applyZoom(zoom - ZOOM_STEP));
+document.getElementById('zoomPct').addEventListener('click', () => applyZoom(1.0));
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (e.key === '=' || e.key === '+') { e.preventDefault(); applyZoom(zoom + ZOOM_STEP); }
+  else if (e.key === '-') { e.preventDefault(); applyZoom(zoom - ZOOM_STEP); }
+  else if (e.key === '0') { e.preventDefault(); applyZoom(1.0); }
 });
 
 const copyBtnEl = document.getElementById('copyBtn');

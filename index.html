@@ -6,7 +6,16 @@
 <link rel="stylesheet" id="hljs-theme" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <style>
+  @font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("/assets/jetbrains-mono.woff2") format("woff2");
+  }
   :root, html[data-theme="dark"] {
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --bg: #07090d;
     --panel: #14191f;
     --border: #3a424d;
@@ -41,7 +50,7 @@
     --panel-deep: #f6f8fa;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: 14px; }
   header { position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--border); padding: 8px 14px; z-index: 10; display: flex; gap: 14px; align-items: center; }
   header .rev { color: var(--accent); font-weight: 600; }
   header .out { color: var(--muted); }
@@ -81,8 +90,8 @@
   .file { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 18px; overflow-x: auto; overflow-y: hidden; }
   .file h3 { margin: 0; padding: 8px 12px; background: var(--panel-strong); border-bottom: 1px solid var(--border); font-size: 13px; color: var(--accent); }
   .hunk-header { padding: 4px 12px; color: var(--muted); background: var(--panel-deep); border-bottom: 1px solid var(--border); font-size: 12px; }
-  table.diff { width: 100%; min-width: max-content; border-collapse: collapse; font-family: inherit; }
-  table.diff td { padding: 0 8px; vertical-align: top; white-space: pre; line-height: 1.5; }
+  table.diff { width: 100%; min-width: max-content; border-collapse: collapse; font-family: var(--font-mono); }
+  table.diff td { padding: 0 8px; vertical-align: top; white-space: pre; line-height: 1.45; }
   td.ln { color: var(--muted); text-align: right; user-select: none; width: 48px; cursor: pointer; border-right: 1px solid var(--border); }
   td.ln:hover { background: var(--selected); color: var(--accent); }
   tr.add td { background: var(--add-bg); }
@@ -92,7 +101,7 @@
   tr.del td.text .prefix { color: var(--del-fg); }
   /* Intra-line diff overlay: invisible text in .bg-layer, syntax-highlighted code on top */
   td.text .content { position: relative; display: inline-block; vertical-align: top; }
-  td.text .bg-layer { position: absolute; left: 0; top: 0; white-space: pre; color: transparent; user-select: none; pointer-events: none; font: inherit; }
+  td.text .bg-layer { position: absolute; left: 0; top: 0; white-space: pre; color: transparent; user-select: none; pointer-events: none; font-family: var(--font-mono); font-size: inherit; }
   td.text .bg-layer .ins { background: var(--ins-overlay); border-radius: 2px; }
   td.text .bg-layer .del { background: var(--del-overlay); border-radius: 2px; }
   td.text .fg-layer { position: relative; z-index: 1; }
@@ -105,7 +114,7 @@
   select.severity { display: block; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; font: inherit; margin-bottom: 6px; }
   .saved-comment .loc .sev { color: var(--accent); font-weight: 600; }
   .saved-comment { color: var(--text); }
-  .saved-comment .body { white-space: pre-wrap; }
+  .saved-comment .body { white-space: pre-wrap; line-height: 1.5; max-width: 68ch; }
   .saved-comment .loc { color: var(--muted); margin-bottom: 4px; }
   .saved-comment .controls { margin-top: 6px; }
   .saved-comment .controls button { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; border-radius: 3px; cursor: pointer; font: inherit; font-size: 11px; margin-right: 4px; }
@@ -117,7 +126,7 @@
   .status.err { color: var(--del-fg); }
   .hint { color: var(--muted); font-size: 12px; padding: 6px 12px; }
   /* Highlight.js overrides: keep diff backgrounds visible */
-  td.text code.hljs { background: transparent !important; padding: 0; font: inherit; }
+  td.text code.hljs { background: transparent !important; padding: 0; font-family: var(--font-mono); font-size: inherit; }
   td.text code { background: transparent; padding: 0; }
   /* Prior-comment marker */
   .saved-comment.prior { border-left: 3px solid #d29922; padding-left: 8px; margin-left: -8px; }
@@ -141,9 +150,9 @@
   .doc-block.selected { background: var(--selected); }
   .doc-block.has-comment-block { box-shadow: inset 3px 0 0 var(--accent); }
   .doc-block h1, .doc-block h2, .doc-block h3 { margin: 0.6em 0 0.3em; }
-  .doc-block p, .doc-block ul, .doc-block ol { margin: 0.4em 0; line-height: 1.55; }
+  .doc-block p, .doc-block ul, .doc-block ol { margin: 0.4em 0; line-height: 1.5; }
   .doc-block pre { background: var(--panel-deep); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
-  .doc-block code { font-family: inherit; }
+  .doc-block pre, .doc-block pre code, .doc-block code { font-family: var(--font-mono); }
   .doc-block :not(pre) > code { background: var(--panel-deep); padding: 1px 4px; border-radius: 3px; }
   .doc-saved-comment { max-width: 860px; margin: 2px auto 8px; }
   .doc-comment-form { max-width: 860px; margin: 4px auto; }

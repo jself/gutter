@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -389,5 +390,20 @@ func TestMergeConfigFileWindowOR(t *testing.T) {
 	mergeConfigFile(&c2, p2)
 	if !c2.Window {
 		t.Errorf("missing window key must not clear Window")
+	}
+}
+
+func TestFontAssetServed(t *testing.T) {
+	req := httptest.NewRequest("GET", "/assets/jetbrains-mono.woff2", nil)
+	w := httptest.NewRecorder()
+	fontHandler().ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "font/woff2" {
+		t.Errorf("Content-Type = %q, want font/woff2", ct)
+	}
+	if w.Body.Len() < 1000 {
+		t.Errorf("body too small: %d bytes", w.Body.Len())
 	}
 }

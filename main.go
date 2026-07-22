@@ -23,7 +23,23 @@ import (
 )
 
 //go:embed index.html
+//go:embed fonts/jetbrains-mono-latin-400.woff2
 var assets embed.FS
+
+// fontHandler serves the embedded JetBrains Mono woff2 so the UI font works
+// offline (no CDN), including in the native window.
+func fontHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, err := assets.ReadFile("fonts/jetbrains-mono-latin-400.woff2")
+		if err != nil {
+			http.Error(w, "font not found", 404)
+			return
+		}
+		w.Header().Set("Content-Type", "font/woff2")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		w.Write(b)
+	})
+}
 
 // version is stamped at build time via -ldflags "-X main.version=…" (see the
 // Makefile). It defaults to "dev" for a plain `go build`.
@@ -465,6 +481,8 @@ func main() {
 			"Severity":  *severity,
 		})
 	})
+
+	mux.Handle("/assets/jetbrains-mono.woff2", fontHandler())
 
 	mux.HandleFunc("/open", func(w http.ResponseWriter, r *http.Request) {
 		if *editorCmd == "" {

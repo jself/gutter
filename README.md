@@ -50,6 +50,13 @@ make install                  # installs to $HOME/.local/bin/gutter
 # or:  make install PREFIX=/usr/local
 ```
 
+The default `make install` is **window-enabled** and needs cgo + a system
+webview (WebKit2GTK+GTK3 on Linux, system WebKit on macOS, WebView2 on
+Windows) — see [Building](#building). If you don't have a system webview,
+use `make install-portable` instead (pure Go, no cgo/WebKit; the `-window`
+flag then falls back to the browser). Prebuilt portable binaries for all
+platforms are also on the [releases page](https://github.com/jself/gutter/releases).
+
 ## Quick start
 
 In any jj or git repo:

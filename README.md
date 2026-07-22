@@ -34,6 +34,8 @@ Works with both [jj](https://github.com/jj-vcs/jj) and git.
   click-to-expand banner
 - "Open in editor" buttons jump to the file/line in your editor of choice
 - Light and dark themes; toggle persists
+- Proportional system sans for prose/chrome, bundled JetBrains Mono for code
+  and diffs; adjustable UI zoom (see [Typography and zoom](#typography-and-zoom))
 - Output is plain markdown — easy to diff, easy for an agent to parse
 - Re-running on the same revset reloads existing review notes as "prior
   comments", so you can iterate
@@ -200,6 +202,9 @@ panel at the top so you don't lose them.
   it if it was collapsed); click again or "show all files" to clear.
 - `☰` toggles the sidebar; `🌙`/`☀` toggles the theme; both persist.
 - A 💬 marker on a line number means you've already commented on that line.
+- The `[ − 100% + ]` control in the header zooms the whole UI; `Ctrl/Cmd +`,
+  `Ctrl/Cmd -`, `Ctrl/Cmd 0` do the same from the keyboard. See
+  [Typography and zoom](#typography-and-zoom).
 
 ## Workflow notes
 
@@ -342,6 +347,28 @@ gutter prints a warning to stderr and falls back to opening the browser, so
 scripts and aliases don't break across machines — the flag just becomes a
 no-op.
 
+### Typography and zoom
+
+The UI uses a proportional system sans for prose and chrome (sidebar, buttons,
+comments) and the bundled **JetBrains Mono** for code, diffs, and the
+markdown/doc-review code fences — the diff itself stays monospace so the
+overlay alignment holds. The base font size was bumped up from earlier
+versions for readability.
+
+A segmented `[ − 100% + ]` control sits in the header, before the theme
+toggle. Click `−`/`+` to zoom out/in, or click the percentage to reset to
+100%. Keyboard equivalents work anywhere in the UI:
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl/Cmd +` | Zoom in |
+| `Ctrl/Cmd -` | Zoom out |
+| `Ctrl/Cmd 0` | Reset zoom to 100% |
+
+Zoom scales the entire UI (not just text) and persists per browser/window via
+`localStorage`, the same as the theme setting. It works both in a regular
+browser tab and in the [native window](#native-window).
+
 ### Revset examples
 
 #### git
@@ -421,4 +448,9 @@ own platform, since the webview needs cgo + a system webview).
 
 ## License
 
-MIT
+MIT for gutter's own code.
+
+Bundles [JetBrains Mono](https://www.jetbrains.com/lp/mono/), © the
+JetBrains Mono project authors, under the SIL Open Font License 1.1 — see
+[`fonts/OFL.txt`](fonts/OFL.txt). The font is embedded in the binary and
+served locally, so it works offline.

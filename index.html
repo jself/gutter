@@ -167,6 +167,8 @@
   .doc-block.has-comment-block { box-shadow: inset 3px 0 0 var(--comment); }
   .doc-block h1, .doc-block h2, .doc-block h3 { margin: 0.6em 0 0.3em; }
   .doc-block p, .doc-block ul, .doc-block ol { margin: 0.4em 0; line-height: 1.5; }
+  .doc-block a { color: var(--comment-fg); text-decoration: underline; text-underline-offset: 2px; }
+  .doc-block a:hover { text-decoration: none; }
   .doc-block pre { background: var(--panel-deep); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
   .doc-block pre, .doc-block pre code, .doc-block code { font-family: var(--font-mono); }
   .doc-block :not(pre) > code { background: var(--panel-deep); padding: 1px 4px; border-radius: 3px; }
@@ -554,7 +556,21 @@ function renderDocView() {
     el.dataset.bi = bi;
     el.innerHTML = b.html;
     el.addEventListener('click', (e) => {
-      if (e.target.closest('a')) return;
+      const a = e.target.closest('a');
+      if (a) {
+        const href = a.getAttribute('href') || '';
+        if (/^https?:\/\//i.test(href)) {
+          // Open external links in the system browser instead of navigating
+          // the review away — vital in -window mode (webview has no tabs).
+          e.preventDefault();
+          fetch('/open-url?url=' + encodeURIComponent(href)).catch(() => {});
+        } else if (href && !href.startsWith('#')) {
+          // Relative/other links have no browser destination and would hijack
+          // the webview (navigate the review UI to a dead gutter path); block.
+          e.preventDefault();
+        }
+        return; // link click never opens the comment form
+      }
       const sel = window.getSelection();
       if (sel && sel.toString().trim() && el.contains(sel.anchorNode)) return; // don't hijack in-block text selection
       openDocCommentForm(bi);

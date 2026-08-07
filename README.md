@@ -309,6 +309,10 @@ leave a comment on it. Block comments anchor to the block's source line range
 in the markdown file, so `review.md` keeps the usual `### file:line-end`
 format — there's nothing new to parse on the agent side.
 
+Links in the rendered document open in your system browser rather than
+navigating away from the review — this matters most in `-window` mode, where
+the webview would otherwise replace the whole review UI with the linked page.
+
 Combine with `-sync` for the agent plan-review loop — have the agent write a
 plan, then have the human review and approve/annotate it before any code is
 touched:

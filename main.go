@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -518,6 +519,23 @@ func main() {
 			return
 		}
 		go c.Wait()
+		w.Write([]byte("ok"))
+	})
+
+	// Open an http(s) URL in the system browser. Used by the doc view so that
+	// clicking a markdown link opens externally instead of navigating away from
+	// the review — critical in -window mode, where the webview would otherwise
+	// replace the whole review UI with the linked page.
+	mux.HandleFunc("/open-url", func(w http.ResponseWriter, r *http.Request) {
+		u := r.URL.Query().Get("url")
+		parsed, err := url.Parse(u)
+		if err != nil || parsed.Host == "" ||
+			(!strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https")) {
+			http.Error(w, "only http(s) URLs allowed", 400)
+			return
+		}
+		fmt.Fprintln(os.Stderr, "open-url:", u)
+		openBrowser(u)
 		w.Write([]byte("ok"))
 	})
 

@@ -339,7 +339,7 @@ func main() {
 		md          = flag.String("md", cfg.MD, "review a markdown file as a rendered document (compose with -sync)")
 		severity    = flag.Bool("severity", cfg.Severity, "show a severity dropdown on comments and emit a [SEVERITY] token on inline headings")
 		window      = flag.Bool("window", cfg.Window, "open the UI in a native desktop window (requires a window-enabled build; see README)")
-		guidePath   = flag.String("guide", cfg.Guide, "review guide: a markdown file that splits the diff into narrated steps (default <dir>/review-guide.md if present; see -guide-format)")
+		guidePath   = flag.String("guide", cfg.Guide, "review guide: a markdown file that splits the diff into narrated steps (default <dir>/review-guide.md or .claude/review-guide.md if present; see -guide-format)")
 		guideFormat = flag.Bool("guide-format", false, "print the review guide format reference and exit")
 		showVersion = flag.Bool("version", false, "print version and exit")
 	)
@@ -411,10 +411,14 @@ func main() {
 		*guidePath = ""
 	}
 	if *guidePath == "" && docPath == "" {
-		cand := filepath.Join(*outDir, "review-guide.md")
-		if _, err := os.Stat(cand); err == nil {
-			*guidePath = cand
-			fmt.Fprintf(os.Stderr, "guide:     using %s\n", cand)
+		// Default discovery: next to the review file, then the agent's usual
+		// .claude/ layout.
+		for _, cand := range []string{filepath.Join(*outDir, "review-guide.md"), filepath.Join(".claude", "review-guide.md")} {
+			if _, err := os.Stat(cand); err == nil {
+				*guidePath = cand
+				fmt.Fprintf(os.Stderr, "guide:     using %s\n", cand)
+				break
+			}
 		}
 	}
 	if *guidePath != "" {

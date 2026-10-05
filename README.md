@@ -100,7 +100,7 @@ ones, and save again.
 | `-editor "<tmpl>"` | auto-detected | Editor command template — see below. |
 | `-severity` | `false` | Show a severity dropdown on inline comments and emit a trailing `[SEVERITY]` token on inline headings. See [Comment severity](#comment-severity). |
 | `-window` | `false` | Open the UI in a native desktop window instead of a browser. Requires a window-enabled build. See [Native window](#native-window). |
-| `-guide <file>` | `<dir>/review-guide.md` if present | Overlay an agent-written guide that splits the diff into narrated steps. See [Guided review](#guided-review). |
+| `-guide <file>` | `<dir>/review-guide.md` or `.claude/review-guide.md` if present | Overlay an agent-written guide that splits the diff into narrated steps. See [Guided review](#guided-review). |
 | `-guide-format` | | Print the guide file format reference and exit. |
 | `-version` | | Print the version and exit. |
 
@@ -398,6 +398,8 @@ full mode are the same set and show in both.
 
 Notes:
 
+- Without `-guide`, gutter looks for `<dir>/review-guide.md` and then
+  `.claude/review-guide.md`.
 - `-guide` is ignored in `-md` document mode.
 - The guide is re-read on every reload, like the diff, so you can edit it
   while gutter is running.

@@ -54,8 +54,9 @@ This file captures the non-obvious decisions so future sessions don't undo them.
   are addressed by the new-side line that follows them. Don't move this logic
   to the browser: the startup coverage summary is how the agent learns to fix
   its guide.
-- **`-guide` defaults to `<dir>/review-guide.md` when that file exists**, so
-  the agent's usual `.claude/` layout works with a bare `gutter`.
+- **`-guide` defaults to `<dir>/review-guide.md`, then `.claude/review-guide.md`**,
+  whichever exists first, so the agent's usual `.claude/` layout works with a
+  bare `gutter` even when `-dir` is unset.
 
 ## UI invariants
 

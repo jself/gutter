@@ -25,6 +25,7 @@ import (
 )
 
 //go:embed index.html
+//go:embed app.js
 //go:embed fonts/jetbrains-mono-latin-400.woff2
 var assets embed.FS
 
@@ -573,6 +574,12 @@ func main() {
 		displayHdrVCS = "github"
 	}
 
+	appJS, _ := assets.ReadFile("app.js")
+	mux.HandleFunc("/app.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(appJS)
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		tmpl.Execute(w, map[string]interface{}{

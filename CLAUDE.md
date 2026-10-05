@@ -8,8 +8,15 @@ This file captures the non-obvious decisions so future sessions don't undo them.
 
 - `main.go` — CLI, HTTP server, diff parser, word-level intra-line diff,
   markdown renderer and parser for `review.md`. Single file on purpose.
-- `index.html` — entire UI (HTML/CSS/JS in one file), embedded via `go:embed`.
-  Uses highlight.js from a CDN at runtime; no bundler.
+- `index.html` — the page: markup and CSS, embedded via `go:embed`. It sets
+  `window.GUTTER_CONFIG` from the Go template (the only template-driven JS)
+  and loads `/app.js`. Uses highlight.js from a CDN at runtime; no bundler.
+- `app.js` — all UI logic, also embedded and served at `/app.js` with
+  `Cache-Control: no-cache`. Every piece of mutable state lives in the single
+  `S` object at the top (data, comments, view mode, step, filters, draft and
+  find bookkeeping, zoom). Functions read and write `S`; don't add new
+  top-level `let`s. Per-run configuration (`CFG`, `HAS_EDITOR`, …) is
+  immutable and stays separate from `S`.
 - `guide.go` — guided review: parser for `review-guide.md` (parts `##`,
   steps `###`, `path:start-end` reference bullets), the matcher that claims
   diff lines per stop, and the `-guide-format` text. Split out of `main.go`

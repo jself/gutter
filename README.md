@@ -232,6 +232,11 @@ See [Comment severity](#comment-severity) and
 - The `[ − 100% + ]` control in the header zooms the whole UI; `Ctrl/Cmd +`,
   `Ctrl/Cmd -`, `Ctrl/Cmd 0` do the same from the keyboard. See
   [Typography and zoom](#typography-and-zoom).
+- `Ctrl/Cmd+F` opens gutter's own find bar (the native window has none):
+  `Enter` / `Shift+Enter` step through matches, `Esc` closes. Folded lines
+  and collapsed files are expanded so the search covers the whole page.
+- In guided mode, `[` and `]` move between steps. See
+  [Guided review](#guided-review).
 
 ## Workflow notes
 

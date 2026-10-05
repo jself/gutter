@@ -184,14 +184,20 @@
   .doc-comment-form { max-width: 860px; margin: 4px auto; }
   /* Guided review */
   .seg button.on { background: var(--selected); color: var(--accent); font-weight: 600; }
-  .guide { max-width: 980px; margin: 0 auto 8px; padding: 4px 20px 0; }
-  .guide-kicker { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 10px; padding: 0 10px; }
-  .guide-head h2 { margin: 2px 0 8px; padding: 0 10px; font-size: 20px; }
+  .guide { margin: 0 0 8px; padding: 0; }
+  .guide .doc-block { padding-left: 0; padding-right: 0; }
+  .guide .doc-block.selected, .guide .doc-block:hover { box-shadow: 0 0 0 6px var(--panel); }
+  .guide .doc-block.selected { box-shadow: 0 0 0 6px var(--selected); }
+  .guide-kicker { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 10px; }
+  .guide-head h2 { margin: 2px 0 8px; font-size: 20px; }
   .guide-head .crumb { color: var(--muted); font-weight: 400; }
-  .guide-overview, .guide-part-intro { border-left: 3px solid var(--border); margin: 6px 10px 10px; }
-  .guide-overview .doc-block, .guide-part-intro .doc-block { color: var(--muted); }
-  .guide-warning { color: #d29922; margin: 6px 10px; }
-  .guide-refs { list-style: none; padding: 0; margin: 8px 10px 12px; font-size: 12px; }
+  .guide-overview { margin: 6px 0 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .guide-overview .doc-block { color: var(--muted); }
+  .guide-steps { list-style: none; margin: 10px 0 16px; padding-left: 4px; }
+  .guide-steps li { padding: 2px 0; cursor: pointer; color: var(--accent); }
+  .guide-steps li:hover { text-decoration: underline; }
+  .guide-warning { color: #d29922; margin: 6px 0; }
+  .guide-refs { list-style: none; padding: 0; margin: 8px 0 12px; font-size: 12px; }
   .guide-refs li { padding: 2px 0; }
   .guide-refs li.live { cursor: pointer; }
   .guide-refs li.live:hover code { text-decoration: underline; }
@@ -210,7 +216,6 @@
   td.text .also { float: right; font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; margin-left: 8px; font-family: var(--font-sans); line-height: 1.4; }
   .unassigned-badge { display: inline-block; background: #d2992230; color: #d29922; border: 1px solid #d2992260; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
   .file-list li.guide-part { font-weight: 600; margin-top: 6px; }
-  .file-list li.guide-part.leaf { font-weight: 500; }
   .file-list li.guide-step { padding-left: 18px; }
   .file-list .counts.cmt { color: var(--comment-fg); }
 </style>
@@ -1102,10 +1107,10 @@ function guideStops() {
   const g = DATA.guide;
   const out = [];
   g.parts.forEach(p => {
-    if (!p.steps || !p.steps.length) out.push({ node: p, part: p, first: true });
-    else p.steps.forEach((st, i) => out.push({ node: st, part: p, first: i === 0 }));
+    out.push({ node: p, part: p, isPart: true });
+    (p.steps || []).forEach(st => out.push({ node: st, part: p }));
   });
-  if (g.unassigned) out.push({ node: g.unassigned, part: g.unassigned, first: true, unassigned: true });
+  if (g.unassigned) out.push({ node: g.unassigned, part: g.unassigned, isPart: true, unassigned: true });
   return out;
 }
 
@@ -1120,9 +1125,7 @@ function claimIndex() {
 }
 
 function stopBlocks(stops, i) {
-  const st = stops[i];
-  const blocks = [...(st.node.blocks || [])];
-  if (st.first && st.node !== st.part) blocks.push(...(st.part.blocks || []));
+  const blocks = [...(stops[i].node.blocks || [])];
   if (i === 0) blocks.push(...DATA.guide.overview);
   return blocks;
 }
@@ -1197,18 +1200,9 @@ function renderGuideSidebar() {
   const stops = guideStops();
   const counts = new Array(stops.length).fill(0);
   COMMENTS.forEach(c => { const i = stopIndexForComment(stops, c); if (i >= 0) counts[i]++; });
-  let lastPart = null;
   stops.forEach((st, si) => {
-    if (st.node !== st.part && st.part !== lastPart) {
-      const li = document.createElement('li');
-      li.className = 'guide-part';
-      li.innerHTML = `<span class="path" title="${escapeHtml(st.part.title)}">${escapeHtml(st.part.title)}</span>`;
-      li.addEventListener('click', () => gotoStop(si));
-      ul.appendChild(li);
-    }
-    lastPart = st.part;
     const li = document.createElement('li');
-    li.className = st.node === st.part ? 'guide-part leaf' : 'guide-step';
+    li.className = st.isPart ? 'guide-part' : 'guide-step';
     if (si === currentStop) li.classList.add('active');
     const badge = st.unassigned ? `<span class="unassigned-badge" title="Changed lines no step claims">${st.node.claims.length}</span>` : '';
     const cnt = counts[si] ? `<span class="counts cmt" title="${counts[si]} comment(s) on this step">💬 ${counts[si]}</span>` : '';
@@ -1238,16 +1232,11 @@ function renderGuided() {
   }
   const head = document.createElement('div');
   head.className = 'guide-head';
-  const crumb = st.node !== st.part ? `<span class="crumb">${escapeHtml(st.part.title)} › </span>` : '';
+  const crumb = !st.isPart ? `<span class="crumb">${escapeHtml(st.part.title)} › </span>` : '';
   const badge = st.unassigned ? `<span class="unassigned-badge">${st.node.claims.length} unclaimed line${st.node.claims.length === 1 ? '' : 's'}</span>` : '';
-  head.innerHTML = `<div class="guide-kicker">Step ${currentStop + 1} of ${stops.length}</div><h2>${crumb}${escapeHtml(st.node.title)}${badge}</h2>`;
+  const kind = st.unassigned ? 'Unassigned' : st.isPart ? 'Part' : 'Step';
+  head.innerHTML = `<div class="guide-kicker">${kind} · ${currentStop + 1} of ${stops.length}</div><h2>${crumb}${escapeHtml(st.node.title)}${badge}</h2>`;
   wrap.appendChild(head);
-  if (st.first && st.node !== st.part && st.part.blocks && st.part.blocks.length) {
-    const intro = document.createElement('div');
-    intro.className = 'guide-part-intro';
-    st.part.blocks.forEach(b => intro.appendChild(makeBlock(b, g.path)));
-    wrap.appendChild(intro);
-  }
   if (st.unassigned) {
     const p = document.createElement('p');
     p.className = 'guide-warning';
@@ -1255,6 +1244,18 @@ function renderGuided() {
     wrap.appendChild(p);
   }
   (st.node.blocks || []).forEach(b => wrap.appendChild(makeBlock(b, g.path)));
+  if (st.isPart && st.node.steps && st.node.steps.length) {
+    const ol = document.createElement('ol');
+    ol.className = 'guide-steps';
+    st.node.steps.forEach(step => {
+      const li = document.createElement('li');
+      li.textContent = step.title;
+      const target = stops.findIndex(x => x.node === step);
+      li.addEventListener('click', () => gotoStop(target));
+      ol.appendChild(li);
+    });
+    wrap.appendChild(ol);
+  }
   if (st.node.refs && st.node.refs.length) {
     const ul = document.createElement('ul');
     ul.className = 'guide-refs';

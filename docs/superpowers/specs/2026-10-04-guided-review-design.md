@@ -45,8 +45,10 @@ Step narration: what this changes, why, what to look at closely.
 Rules:
 
 - `# ` title plus the text under it is the **overview**.
-- `## ` is a **part**; `### ` is a **step** inside it. A part with no steps is
-  itself a stop. Deeper headings are narration formatting.
+- `## ` is a **part**; `### ` is a **step** inside it. Both are stops: a
+  part's page shows its narration, its direct references and a list of its
+  steps, then the walk continues into the steps. Deeper headings are narration
+  formatting.
 - A **reference** is a list bullet whose text is `path`, `path:line` or
   `path:start-end`. Lines are new-side numbers. Bare `path` claims every
   changed line in that file (the only way to claim a wholly deleted file).
@@ -80,10 +82,9 @@ Done in Go on every `/diff` request (the diff is live, the guide is re-read).
 - Header gains a `Full | Guided` segmented toggle when a guide is loaded.
   Guided is the default; the choice persists in `localStorage` key
   `gutter_view_mode`.
-- **Guided mode.** Sidebar shows the overview entry, then parts with nested
-  steps, then Unassigned if non-empty; current stop highlighted. Main pane
-  shows: breadcrumb (part › step), part narration on the part's first stop,
-  step narration, the reference list (dead ones flagged), then the claimed
+- **Guided mode.** Sidebar shows parts with nested steps, then Unassigned if
+  non-empty; current stop highlighted. Main pane shows: breadcrumb (part ›
+  step), narration, a step list on a part page, the reference list (dead ones flagged), then the claimed
   hunks. Within a hunk, lines outside the claimed set ± 3 context lines are
   folded behind a "… N lines" row that expands on click. Lines also claimed
   by another stop carry a small tag. Prev / Next buttons at the bottom;

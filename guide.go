@@ -38,7 +38,7 @@ type GuideNode struct {
 	Refs      []GuideRef   `json:"refs"`
 	Steps     []*GuideNode `json:"steps,omitempty"`
 	// Claims lists [fileIndex, hunkIndex, lineIndex] for every changed line this
-	// node claims. Only leaves (steps, or parts without steps) have claims.
+	// node's own references claim (a part's steps claim separately).
 	Claims [][3]int `json:"claims"`
 }
 
@@ -262,14 +262,13 @@ func docBlockFor(n ast.Node, src []byte, lineStarts []int) (DocBlock, error) {
 	return DocBlock{HTML: buf.String(), LineStart: start, LineEnd: end, Source: source}, nil
 }
 
-// leaves returns the stops in walk order: each step, or a part with no steps.
-func (g *Guide) leaves() []*GuideNode {
+// stops returns every part and step in walk order. A part is a stop of its
+// own (its narration, direct references, and the list of its steps) so the
+// walk reads part → its steps → next part.
+func (g *Guide) stops() []*GuideNode {
 	var out []*GuideNode
 	for _, p := range g.Parts {
-		if len(p.Steps) == 0 {
-			out = append(out, p)
-			continue
-		}
+		out = append(out, p)
 		out = append(out, p.Steps...)
 	}
 	return out
@@ -284,9 +283,9 @@ func resolveGuide(g *Guide, files []File) {
 	}
 	claimed := map[[3]int]bool{}
 	g.Dead = 0
-	leaves := g.leaves()
-	g.Stops = len(leaves)
-	for _, node := range leaves {
+	stops := g.stops()
+	g.Stops = len(stops)
+	for _, node := range stops {
 		node.Claims = nil
 		seen := map[[3]int]bool{}
 		for ri := range node.Refs {
@@ -436,8 +435,9 @@ Rules
 -----
 
 - "# " title and the text under it are the overview.
-- "## " is a part. "### " is a step inside it. A part with no steps is itself
-  one stop. Deeper headings are just narration formatting.
+- "## " is a part. "### " is a step inside it. Both are stops: the part's page
+  shows its narration and lists its steps, then each step follows. Give every
+  part a sentence or two of narration. Deeper headings are just formatting.
 - A reference is a list bullet whose whole text is one of:
       path              every changed line in the file (also how you claim a
                         file that was deleted outright)

@@ -78,8 +78,8 @@ func TestParseGuideStructure(t *testing.T) {
 	if len(p2.Steps) != 0 || len(p2.Refs) != 2 || p2.Refs[0].Start != 0 || p2.Refs[0].Path != "README.md" {
 		t.Errorf("part2 = %+v", p2)
 	}
-	if got := len(g.leaves()); got != 3 {
-		t.Errorf("leaves = %d", got)
+	if got := len(g.stops()); got != 4 {
+		t.Errorf("stops = %d", got)
 	}
 }
 

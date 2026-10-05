@@ -469,3 +469,20 @@ func TestLoadPriorLegacyNotResolved(t *testing.T) {
 		t.Fatalf("legacy heading must parse Resolved=false, got %+v", got)
 	}
 }
+
+func TestParseDiffBinaryFile(t *testing.T) {
+	d := "diff --git a/img.png b/img.png\nnew file mode 100644\nindex 0000000..1234567\nBinary files /dev/null and b/img.png differ\ndiff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1 +1 @@\n-x\n+y\n"
+	files, err := parseDiff(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("files = %d", len(files))
+	}
+	if !files[0].Binary || files[0].Hunks == nil || len(files[0].Hunks) != 0 {
+		t.Errorf("binary file = %+v", files[0])
+	}
+	if files[1].Binary || len(files[1].Hunks) != 1 {
+		t.Errorf("text file = %+v", files[1])
+	}
+}

@@ -217,6 +217,17 @@ heading looks like:
 See [Comment severity](#comment-severity) and
 [Resolving comments](#resolving-comments) for details on each token.
 
+## Drafts
+
+gutter keeps an in-progress copy of your review at `<output>.draft.json`
+(for example `.claude/review.md.draft.json`), rewritten a few hundred
+milliseconds after every comment or general-feedback change. If the window is
+closed or the process dies before you save, the next `gutter` run on the same
+revset, PR or document restores the draft and says so in the status area and
+on stderr. **Save review** and **Submit** delete it. A draft for a different
+revset is left alone and not restored. Add `*.draft.json` to your
+`.gitignore` if the output directory is tracked.
+
 ## UI cheatsheet
 
 - Click a line number to comment on that line; click-and-drag to comment on

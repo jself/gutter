@@ -190,6 +190,7 @@ type File struct {
 	AddCount  int    `json:"add_count"`
 	DelCount  int    `json:"del_count"`
 	Untracked bool   `json:"untracked,omitempty"`
+	Binary    bool   `json:"binary,omitempty"` // no hunks; content not shown
 }
 
 var extLang = map[string]string{
@@ -247,6 +248,7 @@ type DiffData struct {
 	PR       *PRInfo   `json:"pr,omitempty"`
 	Doc      *Doc      `json:"doc,omitempty"`
 	Guide    *Guide    `json:"guide,omitempty"`
+	Draft    *Draft    `json:"draft,omitempty"`
 }
 
 type DocBlock struct {
@@ -275,6 +277,44 @@ type Comment struct {
 type SaveRequest struct {
 	Comments []Comment `json:"comments"`
 	General  string    `json:"general"`
+}
+
+// Draft is the in-progress review gutter persists next to the output file so
+// a killed process or closed window doesn't lose unsaved comments. Key is the
+// rev / PR / doc being reviewed; a draft for a different key is ignored.
+type Draft struct {
+	Key      string    `json:"key"`
+	Comments []Comment `json:"comments"`
+	General  string    `json:"general"`
+}
+
+func draftPathFor(outAbs string) string { return outAbs + ".draft.json" }
+
+func loadDraft(path, key string) *Draft {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var d Draft
+	if err := json.Unmarshal(b, &d); err != nil || d.Key != key {
+		return nil
+	}
+	if len(d.Comments) == 0 && strings.TrimSpace(d.General) == "" {
+		return nil
+	}
+	return &d
+}
+
+func writeDraft(path string, d Draft) error {
+	b, err := json.MarshalIndent(d, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 type PRInfo struct {
@@ -427,6 +467,14 @@ func main() {
 		}
 	}
 
+	draftKey := *rev
+	if docPath != "" {
+		draftKey = "doc:" + docPath
+	} else if *prArg != "" {
+		draftKey = "pr:" + *prArg
+	}
+	draftPath := draftPathFor(outAbs)
+
 	computeData := func() (DiffData, error) {
 		if docPath != "" {
 			doc, err := renderDoc(docPath)
@@ -434,7 +482,7 @@ func main() {
 				return DiffData{}, fmt.Errorf("rendering doc: %w", err)
 			}
 			priorComments, priorGen := loadPrior(outAbs)
-			return DiffData{Rev: docPath, VCS: "doc", Doc: &doc, Prior: priorComments, PriorGen: priorGen}, nil
+			return DiffData{Rev: docPath, VCS: "doc", Doc: &doc, Prior: priorComments, PriorGen: priorGen, Draft: loadDraft(draftPath, draftKey)}, nil
 		}
 		var (
 			diff           string
@@ -475,7 +523,7 @@ func main() {
 			}
 		}
 		priorComments, priorGen := loadPrior(outAbs)
-		data := DiffData{Rev: *rev, VCS: vcs, Files: files, Prior: priorComments, PriorGen: priorGen, PR: prInfo}
+		data := DiffData{Rev: *rev, VCS: vcs, Files: files, Prior: priorComments, PriorGen: priorGen, PR: prInfo, Draft: loadDraft(draftPath, draftKey)}
 		if *guidePath != "" {
 			g, err := parseGuide(*guidePath)
 			if err != nil {
@@ -501,6 +549,9 @@ func main() {
 	}
 	if data.Guide != nil {
 		fmt.Fprintln(os.Stderr, data.Guide.coverageSummary())
+	}
+	if data.Draft != nil {
+		fmt.Fprintf(os.Stderr, "restored %d draft comment(s) from %s\n", len(data.Draft.Comments), draftPath)
 	}
 
 	mux := http.NewServeMux()
@@ -600,6 +651,31 @@ func main() {
 	doneCh := make(chan struct{}, 1)
 	submitCh := make(chan string, 1)
 
+	mux.HandleFunc("/draft", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "POST":
+			var req SaveRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			if len(req.Comments) == 0 && strings.TrimSpace(req.General) == "" {
+				os.Remove(draftPath)
+				w.WriteHeader(204)
+				return
+			}
+			if err := writeDraft(draftPath, Draft{Key: draftKey, Comments: req.Comments, General: req.General}); err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			w.WriteHeader(204)
+		case "DELETE":
+			os.Remove(draftPath)
+			w.WriteHeader(204)
+		default:
+			http.Error(w, "POST or DELETE", 405)
+		}
+	})
 	mux.HandleFunc("/save", func(w http.ResponseWriter, r *http.Request) {
 		if *sync {
 			http.Error(w, "disabled in sync mode; use Submit", 404)
@@ -619,6 +695,7 @@ func main() {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		os.Remove(draftPath)
 		fmt.Fprintf(w, "wrote %s\n", outAbs)
 		select {
 		case doneCh <- struct{}{}:
@@ -639,6 +716,7 @@ func main() {
 		md := renderMarkdown(*rev, vcs, docPath, *severity, prInfo, req)
 		select {
 		case submitCh <- md:
+			os.Remove(draftPath)
 		default: // already submitted; first one wins
 		}
 		w.Write([]byte("Review submitted — you can close this tab"))
@@ -952,7 +1030,11 @@ func parseDiff(s string) ([]File, error) {
 				files = append(files, *cur)
 			}
 			path := parseGitDiffPath(ln)
-			cur = &File{Path: path, Lang: langFor(path)}
+			cur = &File{Path: path, Lang: langFor(path), Hunks: []Hunk{}}
+		case strings.HasPrefix(ln, "Binary files ") || strings.HasPrefix(ln, "GIT binary patch"):
+			if cur != nil {
+				cur.Binary = true
+			}
 		case strings.HasPrefix(ln, "+++ "):
 			if cur != nil {
 				p := strings.TrimPrefix(ln, "+++ ")

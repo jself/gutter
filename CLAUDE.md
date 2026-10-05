@@ -97,8 +97,11 @@ This file captures the non-obvious decisions so future sessions don't undo them.
 - No bundler, no npm. The UI is hand-written and depends only on CDN-loaded
   highlight.js at runtime.
 - No file watcher / push updates. Reload is the refresh mechanism.
-- No persistent backend state. Comments live in the browser session until
-  saved to `review.md`; that file is the source of truth.
+- No persistent backend state beyond two files: `review.md` (the source of
+  truth, written on Save) and `<output>.draft.json` (the in-progress review,
+  rewritten on every change and deleted on Save/Submit). The draft exists
+  because a killed window once lost a whole review; it is keyed by rev/PR/doc
+  and ignored for any other key. Don't add more state than that.
 
 ## Workflow expectations
 

@@ -449,6 +449,10 @@ Rules
 - A deleted line is addressed by the new-side line that now follows it. So a
   block deleted between what are now lines 40 and 41 belongs to a range that
   includes 41.
+- Cut ranges at function, class or block boundaries, never mid-function. A
+  range that ends inside a function splits it across two steps and the
+  reviewer sees a fold in the middle of the code. Read the diff and pick the
+  blank line between declarations, not a round number.
 - References attach to the heading they sit under. A bullet that does not
   parse as a reference is ordinary narration, not an error.
 - Steps with no references are allowed (pure context).

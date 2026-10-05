@@ -64,6 +64,7 @@ type Config struct {
 	MD       string `json:"md,omitempty"`
 	Severity bool   `json:"severity,omitempty"`
 	Window   bool   `json:"window,omitempty"`
+	Guide    string `json:"guide,omitempty"`
 }
 
 func defaultConfig() Config {
@@ -125,6 +126,9 @@ func loadConfig() Config {
 	if v := os.Getenv("GUTTER_WINDOW"); v != "" {
 		c.Window = v != "0" && v != "false" && v != "no"
 	}
+	if v := os.Getenv("GUTTER_GUIDE"); v != "" {
+		c.Guide = v
+	}
 	return c
 }
 
@@ -173,6 +177,9 @@ func mergeConfigFile(c *Config, path string) {
 	}
 	if f.Window {
 		c.Window = true
+	}
+	if f.Guide != "" {
+		c.Guide = f.Guide
 	}
 }
 
@@ -239,6 +246,7 @@ type DiffData struct {
 	PriorGen string    `json:"prior_general,omitempty"`
 	PR       *PRInfo   `json:"pr,omitempty"`
 	Doc      *Doc      `json:"doc,omitempty"`
+	Guide    *Guide    `json:"guide,omitempty"`
 }
 
 type DocBlock struct {
@@ -331,12 +339,18 @@ func main() {
 		md          = flag.String("md", cfg.MD, "review a markdown file as a rendered document (compose with -sync)")
 		severity    = flag.Bool("severity", cfg.Severity, "show a severity dropdown on comments and emit a [SEVERITY] token on inline headings")
 		window      = flag.Bool("window", cfg.Window, "open the UI in a native desktop window (requires a window-enabled build; see README)")
+		guidePath   = flag.String("guide", cfg.Guide, "review guide: a markdown file that splits the diff into narrated steps (default <dir>/review-guide.md if present; see -guide-format)")
+		guideFormat = flag.Bool("guide-format", false, "print the review guide format reference and exit")
 		showVersion = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Println("gutter", version)
+		return
+	}
+	if *guideFormat {
+		fmt.Print(guideFormatText)
 		return
 	}
 
@@ -392,6 +406,23 @@ func main() {
 		_ = os.MkdirAll(d, 0755)
 	}
 
+	if *guidePath != "" && docPath != "" {
+		fmt.Fprintln(os.Stderr, "note: -md set; ignoring -guide")
+		*guidePath = ""
+	}
+	if *guidePath == "" && docPath == "" {
+		cand := filepath.Join(*outDir, "review-guide.md")
+		if _, err := os.Stat(cand); err == nil {
+			*guidePath = cand
+			fmt.Fprintf(os.Stderr, "guide:     using %s\n", cand)
+		}
+	}
+	if *guidePath != "" {
+		if _, err := parseGuide(*guidePath); err != nil {
+			die("reading guide: %v", err)
+		}
+	}
+
 	computeData := func() (DiffData, error) {
 		if docPath != "" {
 			doc, err := renderDoc(docPath)
@@ -440,7 +471,17 @@ func main() {
 			}
 		}
 		priorComments, priorGen := loadPrior(outAbs)
-		return DiffData{Rev: *rev, VCS: vcs, Files: files, Prior: priorComments, PriorGen: priorGen, PR: prInfo}, nil
+		data := DiffData{Rev: *rev, VCS: vcs, Files: files, Prior: priorComments, PriorGen: priorGen, PR: prInfo}
+		if *guidePath != "" {
+			g, err := parseGuide(*guidePath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "guide: %v (showing full diff)\n", err)
+			} else {
+				resolveGuide(g, files)
+				data.Guide = g
+			}
+		}
+		return data, nil
 	}
 
 	// Initial compute to surface "no changes" / load errors at startup.
@@ -454,7 +495,9 @@ func main() {
 	if len(data.Prior) > 0 || data.PriorGen != "" {
 		fmt.Fprintf(os.Stderr, "loaded %d prior comment(s) from %s\n", len(data.Prior), outAbs)
 	}
-	_ = data
+	if data.Guide != nil {
+		fmt.Fprintln(os.Stderr, data.Guide.coverageSummary())
+	}
 
 	mux := http.NewServeMux()
 
@@ -725,26 +768,11 @@ func renderDoc(path string) (Doc, error) {
 	root := mdRenderer.Parser().Parse(text.NewReader(src))
 	var blocks []DocBlock
 	for n := root.FirstChild(); n != nil; n = n.NextSibling() {
-		start, end := nodeLineRange(n, lineStarts)
-		var buf bytes.Buffer
-		if err := mdRenderer.Renderer().Render(&buf, src, n); err != nil {
+		b, err := docBlockFor(n, src, lineStarts)
+		if err != nil {
 			return Doc{}, err
 		}
-		source := ""
-		if start >= 1 && start <= len(lineStarts) {
-			s := lineStarts[start-1]
-			e := len(src)
-			if end < len(lineStarts) {
-				e = lineStarts[end] // start of the line after `end`
-			}
-			source = strings.TrimRight(string(src[s:e]), "\r\n")
-		}
-		blocks = append(blocks, DocBlock{
-			HTML:      buf.String(),
-			LineStart: start,
-			LineEnd:   end,
-			Source:    source,
-		})
+		blocks = append(blocks, b)
 	}
 	return Doc{Path: path, Blocks: blocks}, nil
 }

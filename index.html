@@ -182,6 +182,42 @@
   .doc-block li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1.2em; }
   .doc-saved-comment { max-width: 820px; margin: 8px auto 16px; }
   .doc-comment-form { max-width: 860px; margin: 4px auto; }
+  /* Guided review */
+  .seg button.on { background: var(--selected); color: var(--accent); font-weight: 600; }
+  .guide { margin: 0 0 8px; padding: 0; }
+  .guide .doc-block { padding-left: 0; padding-right: 0; }
+  .guide .doc-block.selected, .guide .doc-block:hover { box-shadow: 0 0 0 6px var(--panel); }
+  .guide .doc-block.selected { box-shadow: 0 0 0 6px var(--selected); }
+  .guide-kicker { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 10px; }
+  .guide-head h2 { margin: 2px 0 8px; font-size: 20px; }
+  .guide-head .crumb { color: var(--muted); font-weight: 400; }
+  .guide-overview { margin: 6px 0 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .guide-overview .doc-block { color: var(--muted); }
+  .guide-steps { list-style: none; margin: 10px 0 16px; padding-left: 4px; }
+  .guide-steps li { padding: 2px 0; cursor: pointer; color: var(--accent); }
+  .guide-steps li:hover { text-decoration: underline; }
+  .guide-warning { color: #d29922; margin: 6px 0; }
+  .guide-refs { list-style: none; padding: 0; margin: 8px 0 12px; font-size: 12px; }
+  .guide-refs li { padding: 2px 0; }
+  .guide-refs li.live { cursor: pointer; }
+  .guide-refs li.live:hover code { text-decoration: underline; }
+  .guide-refs code { font-family: var(--font-mono); color: var(--accent); }
+  .guide-refs .hits { color: var(--muted); margin-left: 6px; }
+  .guide-refs .dead { color: #d29922; margin-left: 6px; }
+  .guide-nav { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 24px 0 40px; }
+  .guide-nav button { font: inherit; padding: 6px 16px; border-radius: 4px; cursor: pointer; background: var(--accent); color: #fff; border: 0; font-weight: 600; }
+  .guide-nav button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); font-weight: 400; }
+  .guide-nav button:disabled { opacity: 0.4; cursor: default; }
+  .guide-nav .pos { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .guide-nav .keys { color: var(--muted); font-size: 11px; margin-left: 10px; }
+  tr.folded { display: none; }
+  tr.fold td { color: var(--accent); background: var(--panel-deep); padding: 3px 12px; font-size: 12px; cursor: pointer; white-space: normal; border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border); user-select: none; }
+  tr.fold td:hover { background: var(--panel-strong); }
+  td.text .also { float: right; font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; margin-left: 8px; font-family: var(--font-sans); line-height: 1.4; }
+  .unassigned-badge { display: inline-block; background: #d2992230; color: #d29922; border: 1px solid #d2992260; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
+  .file-list li.guide-part { font-weight: 600; margin-top: 6px; }
+  .file-list li.guide-step { padding-left: 18px; }
+  .file-list .counts.cmt { color: var(--comment-fg); }
 </style>
 </head>
 <body>
@@ -192,6 +228,10 @@
   {{if not .Sync}}<div class="out">→ {{.Out}}</div>{{end}}
   <div class="spacer"></div>
   <span id="status" class="status"></span>
+  <div class="seg" id="viewSeg" style="display:none" title="View: whole diff, or the guide's steps ([ and ] to move)">
+    <button type="button" id="viewFull">Full</button>
+    <button type="button" id="viewGuided">Guided</button>
+  </div>
   <div class="seg" title="Zoom (Ctrl +/-/0)">
     <button type="button" id="zoomOut" title="Zoom out (Ctrl -)">−</button>
     <button type="button" class="pct" id="zoomPct" title="Reset zoom (Ctrl 0)">100%</button>
@@ -291,11 +331,16 @@ async function load() {
   if (DATA.prior_general) {
     document.getElementById('general').value = DATA.prior_general;
   }
+  if (DATA.guide) {
+    document.getElementById('viewSeg').style.display = '';
+    syncViewSeg();
+  }
   render();
 }
 
 function render() {
   if (DATA.doc) { renderDocView(); renderSidebar(); renderComments(); return; }
+  if (guided()) { renderGuided(); return; }
   renderSidebar();
   updateViewing();
   const container = document.getElementById('files');
@@ -319,9 +364,78 @@ function render() {
       hdr.className = 'hunk-header';
       hdr.textContent = h.header;
       fileDiv.appendChild(hdr);
-      const tbl = document.createElement('table');
-      tbl.className = 'diff';
-      h.lines.forEach((l, li) => {
+      fileDiv.appendChild(buildHunkTable(f, fi, h, hi));
+    });
+    if (large) {
+      const toggle = document.createElement('div');
+      toggle.className = 'collapse-toggle';
+      toggle.textContent = activeFileFilter === f.path
+        ? `▼ ${changed} changed lines — click to collapse`
+        : `▶ ${changed} changed lines (large) — click to expand`;
+      toggle.addEventListener('click', () => {
+        if (fileDiv.classList.contains('collapsed')) {
+          fileDiv.classList.remove('collapsed');
+          toggle.textContent = `▼ ${changed} changed lines — click to collapse`;
+        } else {
+          fileDiv.classList.add('collapsed');
+          toggle.textContent = `▶ ${changed} changed lines (large) — click to expand`;
+          fileDiv.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        }
+      });
+      fileDiv.appendChild(toggle);
+    }
+    container.appendChild(fileDiv);
+  });
+  wireOpenButtons();
+  highlightCode();
+  renderComments();
+}
+
+function wireOpenButtons() {
+  document.querySelectorAll('[data-open-file]').forEach(b => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openInEditor(b.dataset.openFile, b.dataset.openLine || 1);
+    });
+  });
+}
+function highlightCode() {
+  if (!window.hljs) return;
+  document.querySelectorAll('td.text code:not(.fg-layer), td.text code.fg-layer, .doc-block pre code').forEach(el => {
+    try { hljs.highlightElement(el); } catch (e) {}
+  });
+}
+
+// buildHunkTable renders one hunk. opts.visible (Set of line indexes) folds
+// every row outside visible ± CTX behind a click-to-expand row; opts.alsoIn(li)
+// returns other stop ids that also claim the line (guided mode).
+function buildHunkTable(f, fi, h, hi, opts = {}) {
+  const tbl = document.createElement('table');
+  tbl.className = 'diff';
+  const CTX = 3;
+  let show = null;
+  if (opts.visible) {
+    show = new Set();
+    opts.visible.forEach(li => {
+      for (let i = Math.max(0, li - CTX); i <= Math.min(h.lines.length - 1, li + CTX); i++) show.add(i);
+    });
+  }
+  let hiddenRun = [];
+  const flush = () => {
+    if (!hiddenRun.length) return;
+    const run = hiddenRun; hiddenRun = [];
+    const tr = document.createElement('tr');
+    tr.className = 'fold';
+    tr.innerHTML = `<td colspan="3">… ${run.length} line${run.length === 1 ? '' : 's'} outside this step — click to show</td>`;
+    tr.addEventListener('click', () => {
+      run.forEach(li => { const r = tbl.querySelector(`tr[data-li="${li}"]`); if (r) r.classList.remove('folded'); });
+      tr.remove();
+    });
+    tbl.appendChild(tr);
+  };
+  h.lines.forEach((l, li) => {
+    const hidden = show && !show.has(li);
+    if (hidden) hiddenRun.push(li); else flush();
         const tr = document.createElement('tr');
         tr.className = l.kind;
         tr.dataset.fi = fi; tr.dataset.hi = hi; tr.dataset.li = li;
@@ -360,43 +474,15 @@ function render() {
             dragStart = null;
           });
         });
-        tbl.appendChild(tr);
-      });
-      fileDiv.appendChild(tbl);
-    });
-    if (large) {
-      const toggle = document.createElement('div');
-      toggle.className = 'collapse-toggle';
-      toggle.textContent = activeFileFilter === f.path
-        ? `▼ ${changed} changed lines — click to collapse`
-        : `▶ ${changed} changed lines (large) — click to expand`;
-      toggle.addEventListener('click', () => {
-        if (fileDiv.classList.contains('collapsed')) {
-          fileDiv.classList.remove('collapsed');
-          toggle.textContent = `▼ ${changed} changed lines — click to collapse`;
-        } else {
-          fileDiv.classList.add('collapsed');
-          toggle.textContent = `▶ ${changed} changed lines (large) — click to expand`;
-          fileDiv.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        if (hidden) tr.classList.add('folded');
+        if (opts.alsoIn && l.kind !== 'ctx') {
+          const ids = opts.alsoIn(li);
+          if (ids.length) tr.querySelector('td.text').insertAdjacentHTML('beforeend', `<span class="also" title="Also claimed by step ${escapeHtml(ids.join(', '))}">also ${escapeHtml(ids.join(', '))}</span>`);
         }
-      });
-      fileDiv.appendChild(toggle);
-    }
-    container.appendChild(fileDiv);
+        tbl.appendChild(tr);
   });
-  // Wire editor-open buttons
-  document.querySelectorAll('[data-open-file]').forEach(b => {
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openInEditor(b.dataset.openFile, b.dataset.openLine || 1);
-    });
-  });
-  if (window.hljs) {
-    document.querySelectorAll('td.text code:not(.fg-layer), td.text code.fg-layer').forEach(el => {
-      try { hljs.highlightElement(el); } catch (e) {}
-    });
-  }
-  renderComments();
+  flush();
+  return tbl;
 }
 
 function highlightRange(a, b) {
@@ -483,7 +569,9 @@ function openCommentForm(a, b) {
 }
 
 function updateViewing() {
-  document.getElementById('viewing').textContent = activeFileFilter || 'All files';
+  const el = document.getElementById('viewing');
+  if (guided()) { el.textContent = `Step ${currentStop + 1} of ${guideStops().length}`; return; }
+  el.textContent = activeFileFilter || 'All files';
 }
 
 document.getElementById('sidebarToggle').addEventListener('click', () => {
@@ -559,42 +647,47 @@ function renderDocView() {
   const wrap = document.createElement('div');
   wrap.className = 'doc';
   DATA.doc.blocks.forEach((b, bi) => {
-    const el = document.createElement('div');
-    el.className = 'doc-block';
+    const el = makeBlock(b, DATA.doc.path);
     el.dataset.bi = bi;
-    el.innerHTML = b.html;
-    el.addEventListener('click', (e) => {
-      const a = e.target.closest('a');
-      if (a) {
-        const href = a.getAttribute('href') || '';
-        if (/^https?:\/\//i.test(href)) {
-          // Open external links in the system browser instead of navigating
-          // the review away — vital in -window mode (webview has no tabs).
-          e.preventDefault();
-          fetch('/open-url?url=' + encodeURIComponent(href)).catch(() => {});
-        } else if (href && !href.startsWith('#')) {
-          // Relative/other links have no browser destination and would hijack
-          // the webview (navigate the review UI to a dead gutter path); block.
-          e.preventDefault();
-        }
-        return; // link click never opens the comment form
-      }
-      const sel = window.getSelection();
-      if (sel && sel.toString().trim() && el.contains(sel.anchorNode)) return; // don't hijack in-block text selection
-      openDocCommentForm(bi);
-    });
     wrap.appendChild(el);
   });
   container.appendChild(wrap);
-  if (window.hljs) {
-    container.querySelectorAll('pre code').forEach(el => { try { hljs.highlightElement(el); } catch (e) {} });
-  }
+  highlightCode();
 }
 
-function openDocCommentForm(bi) {
-  const b = DATA.doc.blocks[bi];
-  const blockEl = document.querySelector(`.doc-block[data-bi="${bi}"]`);
-  if (!blockEl) return;
+// makeBlock renders one markdown block (doc mode or guide narration) as a
+// clickable, commentable element anchored to path:line_start-line_end.
+function makeBlock(b, path) {
+  const el = document.createElement('div');
+  el.className = 'doc-block';
+  el.dataset.path = path;
+  el.dataset.ls = b.line_start;
+  el.dataset.le = b.line_end;
+  el.innerHTML = b.html;
+  el.addEventListener('click', (e) => {
+    const a = e.target.closest('a');
+    if (a) {
+      const href = a.getAttribute('href') || '';
+      if (/^https?:\/\//i.test(href)) {
+        // Open external links in the system browser instead of navigating
+        // the review away — vital in -window mode (webview has no tabs).
+        e.preventDefault();
+        fetch('/open-url?url=' + encodeURIComponent(href)).catch(() => {});
+      } else if (href && !href.startsWith('#')) {
+        // Relative/other links have no browser destination and would hijack
+        // the webview (navigate the review UI to a dead gutter path); block.
+        e.preventDefault();
+      }
+      return; // link click never opens the comment form
+    }
+    const sel = window.getSelection();
+    if (sel && sel.toString().trim() && el.contains(sel.anchorNode)) return; // don't hijack in-block text selection
+    openBlockCommentForm(b, path, el);
+  });
+  return el;
+}
+
+function openBlockCommentForm(b, path, blockEl) {
   document.querySelectorAll('.doc-comment-form').forEach(r => r.remove());
   document.querySelectorAll('.doc-block.selected').forEach(r => r.classList.remove('selected'));
   blockEl.classList.add('selected');
@@ -602,7 +695,7 @@ function openDocCommentForm(bi) {
   const form = document.createElement('div');
   form.className = 'comment-form doc-comment-form';
   form.innerHTML = `
-    <div style="color: var(--muted); margin-bottom: 4px;">${escapeHtml(DATA.doc.path)}:${b.line_start}${range}</div>
+    <div style="color: var(--muted); margin-bottom: 4px;">${escapeHtml(path)}:${b.line_start}${range}</div>
     ${severitySelectHTML()}
     <textarea placeholder="Comment for the agent..."></textarea>
     <div class="actions">
@@ -617,7 +710,7 @@ function openDocCommentForm(bi) {
     if (!body) { form.remove(); blockEl.classList.remove('selected'); return; }
     COMMENTS.push({
       id: nextId++,
-      path: DATA.doc.path,
+      path,
       side: 'new',
       line: b.line_start,
       end_line: b.line_end,
@@ -640,16 +733,19 @@ function openDocCommentForm(bi) {
 }
 
 function renderDocComments() {
+  renderUnattached(renderBlockComments(COMMENTS));
+}
+
+// renderBlockComments attaches comments to the .doc-block elements currently in
+// the DOM (matched by path and line range) and returns the ones it could not.
+function renderBlockComments(list) {
   document.querySelectorAll('.doc-saved-comment').forEach(r => r.remove());
   document.querySelectorAll('.doc-block.has-comment-block').forEach(el => el.classList.remove('has-comment-block'));
-  const unattached = [];
-  COMMENTS.forEach(c => {
-    let bi = -1;
-    if (c.path === DATA.doc.path) {
-      bi = DATA.doc.blocks.findIndex(b => b.line_start <= c.line && c.line <= b.line_end);
-    }
-    const blockEl = bi >= 0 ? document.querySelector(`.doc-block[data-bi="${bi}"]`) : null;
-    if (!blockEl) { unattached.push(c); return; }
+  const blocks = [...document.querySelectorAll('.doc-block[data-path]')];
+  const rest = [];
+  list.forEach(c => {
+    const blockEl = blocks.find(el => el.dataset.path === c.path && +el.dataset.ls <= c.line && c.line <= +el.dataset.le);
+    if (!blockEl) { rest.push(c); return; }
     blockEl.classList.add('has-comment-block');
     const range = c.end_line && c.end_line !== c.line ? '-' + c.end_line : '';
     const div = document.createElement('div');
@@ -676,7 +772,7 @@ function renderDocComments() {
       });
     });
   });
-  renderUnattached(unattached);
+  return rest;
 }
 
 function renderOutline() {
@@ -700,6 +796,9 @@ function renderOutline() {
 
 function renderSidebar() {
   if (DATA.doc) { renderOutline(); return; }
+  document.querySelector('aside.sidebar h4').textContent = guided() ? 'Guide' : 'Files';
+  document.getElementById('fileFilter').style.display = guided() ? 'none' : '';
+  if (guided()) { renderGuideSidebar(); return; }
   const ul = document.getElementById('fileList');
   ul.innerHTML = '';
   DATA.files.forEach(f => {
@@ -798,9 +897,21 @@ function renderComments() {
   if (DATA.doc) { renderDocComments(); return; }
   document.querySelectorAll('tr.saved-comment-row').forEach(r => r.remove());
   const unattached = [];
-  COMMENTS.forEach(c => {
+  const g = guided();
+  const list = g ? renderBlockComments(COMMENTS) : COMMENTS;
+  const guideCmts = []; // narration comments while in Full view
+  list.forEach(c => {
+    if (DATA.guide && c.path === DATA.guide.path) {
+      // Narration comment: off-screen on another stop (guided) or listed in
+      // its own panel (full); unattached only if no block in the guide has it.
+      if (!guideHasBlockForLine(c.line)) unattached.push(c);
+      else if (!g) guideCmts.push(c);
+      return;
+    }
     const anchor = findAnchor(c);
-    if (!anchor || !anchor.el) { unattached.push(c); return; }
+    if (!anchor) { unattached.push(c); return; }
+    if (!anchor.el) { if (!g) unattached.push(c); return; } // guided: row is on another stop
+    if (g && anchor.el.classList.contains('folded')) return; // guided: line belongs to another stop
     const tr = document.createElement('tr');
     tr.className = 'comment-row saved-comment-row';
     const range = c.end_line && c.end_line !== c.line ? '-' + c.end_line : '';
@@ -841,26 +952,32 @@ function renderComments() {
     });
   });
   renderUnattached(unattached);
+  renderUnattached(guideCmts, { id: 'guide-comments', title: 'Comments on the review guide', color: 'var(--comment-fg)', hint: 'shown in place in the Guided view' });
   markLineNumbers();
+  if (g) renderSidebar(); // refresh per-stop comment counts
 }
 
-function renderUnattached(list) {
-  let panel = document.getElementById('unattached');
+function renderUnattached(list, opts = {}) {
+  const id = opts.id || 'unattached';
+  const title = opts.title || 'Prior comments without matching diff lines';
+  const color = opts.color || '#d29922';
+  let panel = document.getElementById(id);
   if (!list.length) {
     if (panel) panel.remove();
     return;
   }
   if (!panel) {
     panel = document.createElement('div');
-    panel.id = 'unattached';
+    panel.id = id;
     panel.className = 'file';
     document.querySelector('main').insertBefore(panel, document.getElementById('files'));
   }
-  panel.innerHTML = `<h3 style="color: #d29922;">Prior comments without matching diff lines (${list.length})</h3>` +
+  const hint = opts.hint ? ` <span style="color: var(--muted); font-weight: 400;">— ${escapeHtml(opts.hint)}</span>` : '';
+  panel.innerHTML = `<h3 style="color: ${color};">${escapeHtml(title)} (${list.length})${hint}</h3>` +
     list.map(c => {
       const range = c.end_line && c.end_line !== c.line ? '-' + c.end_line : '';
       return `<div style="padding: 10px 12px; border-top: 1px solid var(--border);">
-        <div class="saved-comment prior${c.resolved ? ' resolved' : ''}">
+        <div class="saved-comment${c.prior ? ' prior' : ''}${c.resolved ? ' resolved' : ''}">
           <div class="loc">💬 ${escapeHtml(c.path)}:${c.line}${range}${badgesHTML(c)}</div>
           <div class="body">${escapeHtml(c.body)}</div>
           <div class="controls">
@@ -975,6 +1092,240 @@ async function submit_review() {
 async function quit() {
   await fetch('/quit');
   document.body.innerHTML = '<main><p style="padding:20px;color:var(--muted)">Closed. You can close this tab.</p></main>';
+}
+
+// ---------------- Guided review ----------------
+let VIEW_MODE = (() => { try { return localStorage.getItem('gutter_view_mode'); } catch (e) { return null; } })() || 'guided';
+// The current stop lives in the URL hash (#s3) so a reload keeps your place.
+let currentStop = (() => { const m = /^#s(\d+)$/.exec(location.hash); return m ? Math.max(0, +m[1] - 1) : 0; })();
+
+function guided() { return !!(DATA && DATA.guide) && VIEW_MODE === 'guided'; }
+
+// guideStops flattens parts/steps into the walk order: each step, or a part
+// with no steps, then the synthetic Unassigned part.
+function guideStops() {
+  const g = DATA.guide;
+  const out = [];
+  g.parts.forEach(p => {
+    out.push({ node: p, part: p, isPart: true });
+    (p.steps || []).forEach(st => out.push({ node: st, part: p }));
+  });
+  if (g.unassigned) out.push({ node: g.unassigned, part: g.unassigned, isPart: true, unassigned: true });
+  return out;
+}
+
+function claimIndex() {
+  const idx = new Map();
+  guideStops().forEach(st => st.node.claims.forEach(c => {
+    const k = c.join(':');
+    if (!idx.has(k)) idx.set(k, []);
+    idx.get(k).push(st.node.id);
+  }));
+  return idx;
+}
+
+function stopBlocks(stops, i) {
+  const blocks = [...(stops[i].node.blocks || [])];
+  if (i === 0) blocks.push(...DATA.guide.overview);
+  return blocks;
+}
+
+function guideHasBlockForLine(line) {
+  const stops = guideStops();
+  for (let i = 0; i < stops.length; i++) {
+    if (stopBlocks(stops, i).some(b => b.line_start <= line && line <= b.line_end)) return true;
+  }
+  return false;
+}
+
+function stopIndexForComment(stops, c) {
+  if (c.path === DATA.guide.path) {
+    for (let i = 0; i < stops.length; i++) {
+      if (stopBlocks(stops, i).some(b => b.line_start <= c.line && c.line <= b.line_end)) return i;
+    }
+    return -1;
+  }
+  const fi = DATA.files.findIndex(f => f.path === c.path);
+  if (fi < 0) return -1;
+  const f = DATA.files[fi];
+  const target = c.end_line || c.line;
+  for (let hi = 0; hi < f.hunks.length; hi++) {
+    const lines = f.hunks[hi].lines;
+    for (let li = 0; li < lines.length; li++) {
+      const l = lines[li];
+      const num = c.side === 'old' ? l.old_line : l.new_line;
+      if (num !== target) continue;
+      for (let i = 0; i < stops.length; i++) {
+        if (stops[i].node.claims.some(cl => cl[0] === fi && cl[1] === hi && cl[2] === li)) return i;
+      }
+    }
+  }
+  return -1;
+}
+
+function syncViewSeg() {
+  document.getElementById('viewFull').classList.toggle('on', VIEW_MODE !== 'guided');
+  document.getElementById('viewGuided').classList.toggle('on', VIEW_MODE === 'guided');
+}
+function setViewMode(mode) {
+  VIEW_MODE = mode;
+  try { localStorage.setItem('gutter_view_mode', mode); } catch (e) {}
+  syncViewSeg();
+  render();
+  window.scrollTo(0, 0);
+}
+document.getElementById('viewFull').addEventListener('click', () => setViewMode('full'));
+document.getElementById('viewGuided').addEventListener('click', () => setViewMode('guided'));
+
+function gotoStop(i) {
+  const n = guideStops().length;
+  if (!n) return;
+  currentStop = Math.max(0, Math.min(n - 1, i));
+  try { history.replaceState(null, '', '#s' + (currentStop + 1)); } catch (e) {}
+  render();
+  window.scrollTo(0, 0);
+}
+document.addEventListener('keydown', (e) => {
+  if (!guided() || e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target;
+  if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+  if (e.key === ']') { e.preventDefault(); gotoStop(currentStop + 1); }
+  else if (e.key === '[') { e.preventDefault(); gotoStop(currentStop - 1); }
+});
+
+function renderGuideSidebar() {
+  const ul = document.getElementById('fileList');
+  ul.innerHTML = '';
+  document.getElementById('clearFilter').style.display = 'none';
+  const stops = guideStops();
+  const counts = new Array(stops.length).fill(0);
+  COMMENTS.forEach(c => { const i = stopIndexForComment(stops, c); if (i >= 0) counts[i]++; });
+  stops.forEach((st, si) => {
+    const li = document.createElement('li');
+    li.className = st.isPart ? 'guide-part' : 'guide-step';
+    if (si === currentStop) li.classList.add('active');
+    const badge = st.unassigned ? `<span class="unassigned-badge" title="Changed lines no step claims">${st.node.claims.length}</span>` : '';
+    const cnt = counts[si] ? `<span class="counts cmt" title="${counts[si]} comment(s) on this step">💬 ${counts[si]}</span>` : '';
+    li.innerHTML = `<span class="path" title="${escapeHtml(st.node.title)}">${escapeHtml(st.node.title)}</span>${badge}${cnt}`;
+    li.addEventListener('click', () => gotoStop(si));
+    ul.appendChild(li);
+  });
+}
+
+function renderGuided() {
+  renderSidebar();
+  updateViewing();
+  const container = document.getElementById('files');
+  container.innerHTML = '';
+  const stops = guideStops();
+  if (currentStop >= stops.length) currentStop = Math.max(0, stops.length - 1);
+  const st = stops[currentStop];
+  if (!st) return;
+  const g = DATA.guide;
+  const wrap = document.createElement('div');
+  wrap.className = 'guide';
+  if (currentStop === 0 && g.overview.length) {
+    const ov = document.createElement('div');
+    ov.className = 'guide-overview';
+    g.overview.forEach(b => ov.appendChild(makeBlock(b, g.path)));
+    wrap.appendChild(ov);
+  }
+  const head = document.createElement('div');
+  head.className = 'guide-head';
+  const crumb = !st.isPart ? `<span class="crumb">${escapeHtml(st.part.title)} › </span>` : '';
+  const badge = st.unassigned ? `<span class="unassigned-badge">${st.node.claims.length} unclaimed line${st.node.claims.length === 1 ? '' : 's'}</span>` : '';
+  const kind = st.unassigned ? 'Unassigned' : st.isPart ? 'Part' : 'Step';
+  head.innerHTML = `<div class="guide-kicker">${kind} · ${currentStop + 1} of ${stops.length}</div><h2>${crumb}${escapeHtml(st.node.title)}${badge}</h2>`;
+  wrap.appendChild(head);
+  if (st.unassigned) {
+    const p = document.createElement('p');
+    p.className = 'guide-warning';
+    p.textContent = 'No step in the guide claims these changed lines. Review them here; the guide should be fixed to cover them.';
+    wrap.appendChild(p);
+  }
+  (st.node.blocks || []).forEach(b => wrap.appendChild(makeBlock(b, g.path)));
+  if (st.isPart && st.node.steps && st.node.steps.length) {
+    const ol = document.createElement('ol');
+    ol.className = 'guide-steps';
+    st.node.steps.forEach(step => {
+      const li = document.createElement('li');
+      li.textContent = step.title;
+      const target = stops.findIndex(x => x.node === step);
+      li.addEventListener('click', () => gotoStop(target));
+      ol.appendChild(li);
+    });
+    wrap.appendChild(ol);
+  }
+  if (st.node.refs && st.node.refs.length) {
+    const ul = document.createElement('ul');
+    ul.className = 'guide-refs';
+    st.node.refs.forEach(r => {
+      const li = document.createElement('li');
+      const loc = r.start ? `${r.path}:${r.start}${r.end !== r.start ? '-' + r.end : ''}` : r.path;
+      if (r.hits) {
+        li.className = 'live';
+        li.innerHTML = `<code>${escapeHtml(loc)}</code><span class="hits">${r.hits} line${r.hits === 1 ? '' : 's'}</span>`;
+        li.addEventListener('click', () => {
+          const el = container.querySelector(`.file[data-path="${CSS.escape(r.path)}"]`);
+          if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        });
+      } else {
+        li.innerHTML = `<code>${escapeHtml(loc)}</code><span class="dead">⚠ dead reference: matches no changed line</span>`;
+      }
+      ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+  }
+  container.appendChild(wrap);
+
+  const idx = claimIndex();
+  const byFile = new Map();
+  st.node.claims.forEach(([fi, hi, li]) => {
+    if (!byFile.has(fi)) byFile.set(fi, new Map());
+    const m = byFile.get(fi);
+    if (!m.has(hi)) m.set(hi, new Set());
+    m.get(hi).add(li);
+  });
+  [...byFile.keys()].sort((a, b) => a - b).forEach(fi => {
+    const f = DATA.files[fi];
+    const hunks = byFile.get(fi);
+    let add = 0, del = 0;
+    hunks.forEach((set, hi) => set.forEach(li => {
+      const k = f.hunks[hi].lines[li].kind;
+      if (k === 'add') add++; else if (k === 'del') del++;
+    }));
+    const fileDiv = document.createElement('div');
+    fileDiv.className = 'file';
+    fileDiv.dataset.path = f.path;
+    const openBtn = HAS_EDITOR ? `<button class="open-btn" type="button" data-open-file="${escapeHtml(f.path)}">open in editor</button>` : '';
+    const untrackedTag = f.untracked ? '<span class="untracked-badge" title="Untracked file (not yet added to git)">untracked</span>' : '';
+    fileDiv.innerHTML = `<h3>${openBtn}${escapeHtml(f.path)}${untrackedTag}<span class="file-meta"><span class="add">+${add}</span> <span class="del">−${del}</span></span></h3>`;
+    [...hunks.keys()].sort((a, b) => a - b).forEach(hi => {
+      const h = f.hunks[hi];
+      const hdr = document.createElement('div');
+      hdr.className = 'hunk-header';
+      hdr.textContent = h.header;
+      fileDiv.appendChild(hdr);
+      fileDiv.appendChild(buildHunkTable(f, fi, h, hi, {
+        visible: hunks.get(hi),
+        alsoIn: (li) => (idx.get(`${fi}:${hi}:${li}`) || []).filter(id => id !== st.node.id),
+      }));
+    });
+    container.appendChild(fileDiv);
+  });
+
+  const nav = document.createElement('div');
+  nav.className = 'guide-nav';
+  nav.innerHTML = `<button type="button" class="secondary" id="prevStop"${currentStop === 0 ? ' disabled' : ''}>← Previous</button>
+    <span class="pos">${currentStop + 1} / ${stops.length}</span>
+    <button type="button" id="nextStop"${currentStop === stops.length - 1 ? ' disabled' : ''}>Next →</button>
+    <span class="keys">[ and ] to move</span>`;
+  nav.querySelector('#prevStop').addEventListener('click', () => gotoStop(currentStop - 1));
+  nav.querySelector('#nextStop').addEventListener('click', () => gotoStop(currentStop + 1));
+  container.appendChild(nav);
+  wireOpenButtons();
+  highlightCode();
+  renderComments();
 }
 
 function escapeHtml(s) {

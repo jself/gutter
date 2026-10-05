@@ -100,6 +100,8 @@ ones, and save again.
 | `-editor "<tmpl>"` | auto-detected | Editor command template — see below. |
 | `-severity` | `false` | Show a severity dropdown on inline comments and emit a trailing `[SEVERITY]` token on inline headings. See [Comment severity](#comment-severity). |
 | `-window` | `false` | Open the UI in a native desktop window instead of a browser. Requires a window-enabled build. See [Native window](#native-window). |
+| `-guide <file>` | `<dir>/review-guide.md` or `.claude/review-guide.md` if present | Overlay an agent-written guide that splits the diff into narrated steps. See [Guided review](#guided-review). |
+| `-guide-format` | | Print the guide file format reference and exit. |
 | `-version` | | Print the version and exit. |
 
 ## Configuration
@@ -125,6 +127,7 @@ config (`$XDG_CONFIG_HOME/gutter/config.json`, falling back to
 | `GUTTER_COLLAPSE` | `-collapse` |
 | `GUTTER_SEVERITY` | `-severity` (`true` / `false`) |
 | `GUTTER_WINDOW` | `-window` (`true` / `false`) |
+| `GUTTER_GUIDE` | `-guide` |
 
 ### Config file
 
@@ -141,7 +144,8 @@ config (`$XDG_CONFIG_HOME/gutter/config.json`, falling back to
   "collapse": 120,
   "open": true,
   "severity": false,
-  "window": false
+  "window": false,
+  "guide": ""
 }
 ```
 
@@ -331,6 +335,76 @@ Notes:
 - `-md` ignores `-r` — there's no revset to diff in document mode.
 - Non-sync doc mode writes `review.md` titled `# Review of <path>` instead of
   the usual `# Review of <revset>`.
+
+### Guided review
+
+A big diff is easier to review as a sequence of small, explained steps than as
+a flat list of files. The agent that made the change knows how it decomposes,
+so it writes a short **guide** and gutter overlays it on the live diff:
+
+```
+gutter -guide .claude/review-guide.md     # or just `gutter` if the file exists
+```
+
+![gutter guided review: one step of a narrated walkthrough](docs/screenshot-guided.png)
+
+The header gains a **Full | Guided** toggle (Guided is the default when a
+guide is loaded; the choice is remembered). In guided mode the sidebar lists
+the guide's parts and steps, and the main pane shows one step at a time: its
+narration, the code it references with unrelated lines folded, and
+Previous / Next. `[` and `]` move between steps, and the step is kept in the
+URL hash so a reload stays put.
+
+The guide is plain markdown. `##` is a part, `###` is a step, and a bullet
+whose whole text is `path`, `path:line` or `path:start-end` is a reference
+(new-side line numbers, same as `review.md`). Everything else is narration:
+
+```markdown
+# Review guide
+
+What the change does as a whole and why.
+
+## 1. Renderer
+
+### 1.1 Enable GFM extensions
+
+Why this step exists and what to look at closely.
+
+- main.go:23
+- main.go:710-716
+
+## 2. Docs
+
+- README.md
+```
+
+`gutter -guide-format` prints the full format reference.
+
+Coverage is enforced by gutter, not trusted from the agent: every changed line
+that no step claims is collected into a trailing **Unassigned** step with an
+amber badge, so nothing can be hidden by a sloppy guide. References that match
+no changed line are kept and flagged as dead rather than dropped. Lines claimed
+by two steps appear in both with an "also in" tag. On startup gutter prints
+
+```
+guide: 5 stop(s), 0 dead reference(s), 0 unassigned line(s) in 0 file(s)
+```
+
+so an agent can fix its guide before handing over the review.
+
+The narration itself is commentable: click a paragraph of the guide to leave a
+comment anchored to the guide file (`review-guide.md:12`), which lets you tell
+the agent its explanation is wrong, as distinct from a comment on the code.
+These flow through `review.md` unchanged. Comments made in guided mode and
+full mode are the same set and show in both.
+
+Notes:
+
+- Without `-guide`, gutter looks for `<dir>/review-guide.md` and then
+  `.claude/review-guide.md`.
+- `-guide` is ignored in `-md` document mode.
+- The guide is re-read on every reload, like the diff, so you can edit it
+  while gutter is running.
 
 ### Comment severity
 

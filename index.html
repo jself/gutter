@@ -430,7 +430,8 @@ function renderView() {
     if (large && activeFileFilter !== f.path) {
       fileDiv.classList.add('collapsed');
     }
-    (f.hunks || []).forEach((h, hi) => {
+    const hunks = f.hunks || [];
+    hunks.forEach((h, hi) => {
       const hdr = document.createElement('div');
       hdr.className = 'hunk-header';
       hdr.textContent = h.header;
@@ -531,7 +532,8 @@ function buildHunkTable(f, fi, h, hi, opts = {}) {
         tr.querySelectorAll('td.ln').forEach(td => {
           td.addEventListener('mousedown', (e) => {
             e.preventDefault();
-            dragStart = { fi, hi, li, side: td.dataset.side === 'old' ? 'old' : (lineNum ? side : 'new') };
+            // Clicking the old-side cell of an added line (no old number) still anchors to the new side.
+            dragStart = { fi, hi, li, side: td.dataset.side === 'old' && l.old_line ? 'old' : (lineNum ? side : 'new') };
             highlightRange(dragStart, dragStart);
           });
           td.addEventListener('mouseenter', (e) => {

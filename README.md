@@ -346,6 +346,8 @@ so it writes a short **guide** and gutter overlays it on the live diff:
 gutter -guide .claude/review-guide.md     # or just `gutter` if the file exists
 ```
 
+![gutter guided review: one step of a narrated walkthrough](docs/screenshot-guided.png)
+
 The header gains a **Full | Guided** toggle (Guided is the default when a
 guide is loaded; the choice is remembered). In guided mode the sidebar lists
 the guide's parts and steps, and the main pane shows one step at a time: its

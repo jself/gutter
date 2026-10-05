@@ -10,6 +10,10 @@ This file captures the non-obvious decisions so future sessions don't undo them.
   markdown renderer and parser for `review.md`. Single file on purpose.
 - `index.html` — entire UI (HTML/CSS/JS in one file), embedded via `go:embed`.
   Uses highlight.js from a CDN at runtime; no bundler.
+- `guide.go` — guided review: parser for `review-guide.md` (parts `##`,
+  steps `###`, `path:start-end` reference bullets), the matcher that claims
+  diff lines per stop, and the `-guide-format` text. Split out of `main.go`
+  because it is self-contained and has its own tests in `guide_test.go`.
 - `Makefile` — `build`, `install` (honors `PREFIX`, default `~/.local`),
   `clean`, `run`. Install is the standard path.
 - `docs/screenshot-{dark,light}.png` — referenced by README, regenerated from
@@ -44,6 +48,14 @@ This file captures the non-obvious decisions so future sessions don't undo them.
 - **localStorage keys are prefixed `gutter_`** (`gutter_theme`,
   `gutter_sidebar_hidden`). Don't change them without a migration — users will
   lose their theme.
+- **Guided review coverage is computed in Go, not trusted from the guide.**
+  `resolveGuide` puts every unclaimed add/del line into a synthetic
+  `Unassigned` stop and keeps dead references with `Hits == 0`. Deleted lines
+  are addressed by the new-side line that follows them. Don't move this logic
+  to the browser: the startup coverage summary is how the agent learns to fix
+  its guide.
+- **`-guide` defaults to `<dir>/review-guide.md` when that file exists**, so
+  the agent's usual `.claude/` layout works with a bare `gutter`.
 
 ## UI invariants
 
@@ -62,14 +74,25 @@ This file captures the non-obvious decisions so future sessions don't undo them.
 - Theme is driven by `html[data-theme="light|dark"]` CSS variables. The
   highlight.js stylesheet href is swapped at the same time
   (`#hljs-theme.href`).
+- Guided mode reuses the doc-mode block machinery: `makeBlock(b, path)`
+  renders any markdown block as a commentable `.doc-block` carrying
+  `data-path/ls/le`, and `renderBlockComments` attaches comments to whatever
+  blocks are in the DOM. Doc mode and guide narration share this; don't fork it.
+- In guided mode, a comment whose anchor row is on another step is simply
+  off-screen, not "unattached". Only comments with no anchor anywhere go to
+  the unattached panel.
+- The current step lives in `location.hash` (`#s3`) and the Full/Guided
+  choice in `localStorage` `gutter_view_mode`.
 - `td.ln.has-comment` uses `var(--selected)` for its background so the chip
   adapts to light mode. Don't hardcode it.
 
 ## Things that are deliberately NOT here
 
-- No test suite. The historical verification path is Playwright against a
-  local server, and bug fixes were caught visually. If you add tests, prefer
-  end-to-end against the binary over unit tests of the diff parser.
+- Tests exist only for the pure Go pieces (`main_test.go`, `guide_test.go`:
+  config, markdown round-trip, guide parsing and matching). The UI is verified
+  visually against a local server (headless Chromium screenshots work). If you
+  add more, prefer end-to-end against the binary over unit tests of the diff
+  parser.
 - No bundler, no npm. The UI is hand-written and depends only on CDN-loaded
   highlight.js at runtime.
 - No file watcher / push updates. Reload is the refresh mechanism.

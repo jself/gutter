@@ -20,6 +20,7 @@ import (
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/text"
 )
 
@@ -318,17 +319,17 @@ func main() {
 	cfg := loadConfig()
 
 	var (
-		rev       = flag.String("r", cfg.Rev, "revset (jj) or rev (git); default: jj @ (current change) or git working tree")
-		output    = flag.String("o", cfg.Output, "output review filename")
-		outDir    = flag.String("dir", cfg.Dir, "directory for the output file (e.g. \".claude\")")
-		port      = flag.Int("port", cfg.Port, "HTTP port (0 = random)")
-		open      = flag.Bool("open", cfg.Open, "open browser")
-		editorCmd = flag.String("editor", cfg.Editor, "editor command template; {file} and {line} are substituted (e.g. \"code -g {file}:{line}\")")
-		collapse  = flag.Int("collapse", cfg.Collapse, "auto-collapse files with more than N changed lines (0 disables)")
-		prArg     = flag.String("pr", cfg.PR, "review a GitHub PR by number or URL (uses the gh CLI)")
-		sync      = flag.Bool("sync", cfg.Sync, "one-shot review: block until Submit, print the review to stdout, then exit (no review.md written)")
-		md        = flag.String("md", cfg.MD, "review a markdown file as a rendered document (compose with -sync)")
-		severity  = flag.Bool("severity", cfg.Severity, "show a severity dropdown on comments and emit a [SEVERITY] token on inline headings")
+		rev         = flag.String("r", cfg.Rev, "revset (jj) or rev (git); default: jj @ (current change) or git working tree")
+		output      = flag.String("o", cfg.Output, "output review filename")
+		outDir      = flag.String("dir", cfg.Dir, "directory for the output file (e.g. \".claude\")")
+		port        = flag.Int("port", cfg.Port, "HTTP port (0 = random)")
+		open        = flag.Bool("open", cfg.Open, "open browser")
+		editorCmd   = flag.String("editor", cfg.Editor, "editor command template; {file} and {line} are substituted (e.g. \"code -g {file}:{line}\")")
+		collapse    = flag.Int("collapse", cfg.Collapse, "auto-collapse files with more than N changed lines (0 disables)")
+		prArg       = flag.String("pr", cfg.PR, "review a GitHub PR by number or URL (uses the gh CLI)")
+		sync        = flag.Bool("sync", cfg.Sync, "one-shot review: block until Submit, print the review to stdout, then exit (no review.md written)")
+		md          = flag.String("md", cfg.MD, "review a markdown file as a rendered document (compose with -sync)")
+		severity    = flag.Bool("severity", cfg.Severity, "show a severity dropdown on comments and emit a [SEVERITY] token on inline headings")
 		window      = flag.Bool("window", cfg.Window, "open the UI in a native desktop window (requires a window-enabled build; see README)")
 		showVersion = flag.Bool("version", false, "print version and exit")
 	)
@@ -706,7 +707,11 @@ func detectVCS() (string, error) {
 	return "", fmt.Errorf("not a jj or git repository")
 }
 
-var mdRenderer = goldmark.New()
+// GFM extensions: tables, strikethrough and task lists are not CommonMark and
+// would otherwise render as literal text (a table becomes a paragraph of pipes).
+var mdRenderer = goldmark.New(goldmark.WithExtensions(
+	extension.Table, extension.Strikethrough, extension.TaskList,
+))
 
 // renderDoc parses a markdown file and returns its top-level blocks, each with
 // its rendered HTML fragment and 1-based source line range.

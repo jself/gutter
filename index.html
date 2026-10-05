@@ -172,6 +172,14 @@
   .doc-block pre { background: var(--panel-deep); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
   .doc-block pre, .doc-block pre code, .doc-block code { font-family: var(--font-mono); }
   .doc-block :not(pre) > code { background: var(--panel-deep); padding: 1px 4px; border-radius: 3px; }
+  .doc-block table { border-collapse: collapse; margin: 0.6em 0; display: block; max-width: 100%; overflow-x: auto; font-size: 0.95em; }
+  .doc-block th, .doc-block td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; vertical-align: top; line-height: 1.4; }
+  .doc-block th { background: var(--panel-deep); font-weight: 600; }
+  .doc-block tr:nth-child(even) td { background: var(--panel); }
+  .doc-block th[align="center"], .doc-block td[align="center"] { text-align: center; }
+  .doc-block th[align="right"], .doc-block td[align="right"] { text-align: right; }
+  .doc-block del { color: var(--muted); }
+  .doc-block li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1.2em; }
   .doc-saved-comment { max-width: 820px; margin: 8px auto 16px; }
   .doc-comment-form { max-width: 860px; margin: 4px auto; }
 </style>
